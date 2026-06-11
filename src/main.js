@@ -1,22 +1,21 @@
 import './style.css';
-import { GRID_COLS, GRID_ROWS, SCROLL_STEP } from './config.js';
+import { GRID_COLS, GRID_ROWS, SCROLL_STEP, DRAG_THRESHOLD } from './config.js';
 import { hashSeed, randomSeed } from './core/rng.js';
 import { t, setLang, getLang } from './i18n.js';
 import { Game } from './game.js';
 import { screenToWorld } from './render/camera.js';
 import { TileType } from './map/tile.js';
+import { teamLetter } from './teams.js';
 
 const canvas = document.getElementById('map');
 const game = new Game(canvas);
-
-// Exposed for debugging and headless checks; harmless in production.
-window.game = game;
+window.game = game; // debugging / headless checks
 
 const $ = (id) => document.getElementById(id);
-const seedInput = $('seed');
 const tooltip = $('tooltip');
 const mapStatsEl = $('map-stats');
 const envStatsEl = $('env-stats');
+const teamSummaryEl = $('team-summary');
 const legendEl = $('legend');
 const viewModesEl = $('view-modes');
 const speedsEl = $('speeds');
@@ -24,6 +23,8 @@ const zoomsEl = $('zooms');
 const langsEl = $('langs');
 const pauseBtn = $('pause-btn');
 const pausedBadge = $('paused-badge');
+
+let started = false; // becomes true after the first Generate
 
 // --- panels ---------------------------------------------------------------
 
@@ -58,10 +59,7 @@ function renderRows(el, rows) {
 function updateLegend() {
   if (!legendEl) return;
   legendEl.innerHTML = (LEGENDS[game.viewMode] || [])
-    .map(
-      ([color, key]) =>
-        `<span class="swatch"><i style="background:${color}"></i>${t(key)}</span>`,
-    )
+    .map(([color, key]) => `<span class="swatch"><i style="background:${color}"></i>${t(key)}</span>`)
     .join('');
 }
 
@@ -76,8 +74,6 @@ function updateMapStats() {
     [t('stat.water'), `${s.water} (${pct(s.waterFraction)})`],
     [t('stat.land'), s.land],
     [t('stat.avgFertility'), num(s.avgFertility)],
-    [t('stat.avgMoisture'), num(s.avgMoisture)],
-    [t('stat.avgSunlight'), num(s.avgSunlight)],
     [t('stat.camera'), `(${Math.round(game.camera.x)}, ${Math.round(game.camera.y)})`],
   ]);
 }
@@ -90,9 +86,17 @@ function updateEnvPanel() {
     [t('stat.year'), e.year],
     [t('stat.season'), `${t('season.' + e.season)} · ${t('val.day', { n: e.day })}`],
     [t('stat.temperature'), `${Math.round(e.temperature)}°C`],
-    [t('stat.daylight'), `${Math.round(e.daylight * 100)}%`],
     [t('stat.fps'), fpsTxt],
   ]);
+}
+
+function updateTeamSummary() {
+  if (!teamSummaryEl || !game.teams) return;
+  if (!game.teams.length) { teamSummaryEl.textContent = ''; return; }
+  const parts = game.teams.map(
+    (tm) => `<b style="color:${tm.color.fill}">${teamLetter(tm.id)}</b>:${tm.workers.length}`,
+  );
+  teamSummaryEl.innerHTML = `Teams ${parts.join(' / ')}`;
 }
 
 function updatePausedBadge() {
@@ -103,16 +107,9 @@ function updatePausedBadge() {
 function refreshPanels() {
   updateMapStats();
   updateEnvPanel();
+  updateTeamSummary();
   updateLegend();
   updatePausedBadge();
-}
-
-// --- map generation -------------------------------------------------------
-
-function newMap(seed) {
-  game.newMap(seed);
-  if (seedInput) seedInput.value = game.seed;
-  refreshPanels();
 }
 
 // --- tool button strips ---------------------------------------------------
@@ -133,7 +130,6 @@ if (viewModesEl) {
     updateLegend();
   });
 }
-
 if (speedsEl) {
   speedsEl.addEventListener('click', (ev) => {
     const btn = ev.target.closest('button[data-speed]');
@@ -142,7 +138,6 @@ if (speedsEl) {
     setActive(speedsEl, 'data-speed', btn.dataset.speed);
   });
 }
-
 if (zoomsEl) {
   zoomsEl.addEventListener('click', (ev) => {
     const btn = ev.target.closest('button[data-zoom]');
@@ -151,12 +146,8 @@ if (zoomsEl) {
     setActive(zoomsEl, 'data-zoom', btn.dataset.zoom);
   });
 }
-
 if (pauseBtn) {
-  pauseBtn.addEventListener('click', () => {
-    game.paused = !game.paused;
-    updatePausedBadge();
-  });
+  pauseBtn.addEventListener('click', () => { game.paused = !game.paused; updatePausedBadge(); });
 }
 
 // --- language -------------------------------------------------------------
@@ -164,7 +155,6 @@ if (pauseBtn) {
 function applyLang(lang) {
   setLang(lang);
   document.documentElement.lang = lang;
-  // Re-render any element carrying a data-i18n key.
   for (const el of document.querySelectorAll('[data-i18n]')) {
     el.textContent = t(el.dataset.i18n);
   }
@@ -172,41 +162,70 @@ function applyLang(lang) {
     el.title = t(el.dataset.i18nTitle);
   }
   setActive(langsEl, 'data-lang', lang);
+  setActive($('start-langs'), 'data-lang', lang);
   refreshPanels();
 }
-
-if (langsEl) {
-  langsEl.addEventListener('click', (ev) => {
+function bindLangStrip(el) {
+  if (!el) return;
+  el.addEventListener('click', (ev) => {
     const btn = ev.target.closest('button[data-lang]');
-    if (!btn) return;
-    applyLang(btn.dataset.lang);
+    if (btn) applyLang(btn.dataset.lang);
   });
 }
+bindLangStrip(langsEl);
+bindLangStrip($('start-langs'));
 
-// --- seed / regenerate ----------------------------------------------------
+// --- start screen ---------------------------------------------------------
 
-const regenerateBtn = $('regenerate');
-if (regenerateBtn) {
-  regenerateBtn.addEventListener('click', () => newMap(randomSeed()));
+const startScreen = $('start-screen');
+const startSeed = $('start-seed');
+const teamCountInput = $('start-team-count');
+const teamCountLabel = $('start-team-count-label');
+const workersInput = $('start-workers');
+const workersLabel = $('start-workers-label');
+
+function bindSlider(input, label) {
+  if (!input || !label) return;
+  const sync = () => { label.textContent = input.value; };
+  input.addEventListener('input', sync);
+  sync();
 }
-if (seedInput) {
-  seedInput.addEventListener('change', () => {
-    const raw = seedInput.value.trim();
-    if (!raw) return;
-    const seed = /^\d+$/.test(raw) ? (Number(raw) >>> 0) : hashSeed(raw);
-    newMap(seed);
-  });
+bindSlider(teamCountInput, teamCountLabel);
+bindSlider(workersInput, workersLabel);
+
+$('start-seed-random')?.addEventListener('click', () => {
+  if (startSeed) startSeed.value = String(randomSeed());
+});
+
+function readSeed(raw) {
+  const v = (raw || '').trim();
+  if (!v) return randomSeed();
+  return /^\d+$/.test(v) ? (Number(v) >>> 0) : hashSeed(v);
 }
+
+function generate() {
+  const seed = readSeed(startSeed?.value);
+  const teamCount = Number(teamCountInput?.value) || 2;
+  const workersPerTeam = Number(workersInput?.value) || 4;
+  game.newMap(seed, { teamCount, workersPerTeam });
+  if (startScreen) startScreen.hidden = true;
+  refreshPanels();
+  if (!started) { started = true; game.start(); }
+}
+$('start-generate')?.addEventListener('click', generate);
+
+$('regenerate')?.addEventListener('click', () => {
+  // Re-open the setup screen so teams / workers can be reconfigured.
+  if (startScreen) startScreen.hidden = false;
+});
 
 // --- camera panning -------------------------------------------------------
 
-// Scroll arrows: hold to pan, release to stop.
 for (const btn of document.querySelectorAll('.scroll-btn[data-dir]')) {
   const dir = btn.dataset.dir;
   const set = (on) => {
     const k = 1 / Math.sqrt(2);
     const v = on ? SCROLL_STEP : 0;
-    // Match the iso pan directions used for WASD.
     if (dir === 'up')         game.panDir = { x: -k * v, y: -k * v };
     else if (dir === 'down')  game.panDir = { x: k * v, y: k * v };
     else if (dir === 'left')  game.panDir = { x: -k * v, y: k * v };
@@ -218,94 +237,116 @@ for (const btn of document.querySelectorAll('.scroll-btn[data-dir]')) {
   btn.addEventListener('pointerleave', () => set(false));
 }
 
-// Keyboard: arrows + WASD pan the camera; space toggles pause.
+// Keyboard shortcuts: 1–5 speed, 6–9/0 zoom, space pause, WASD/arrows pan.
 const KEY_TO_WASD = {
   ArrowUp: 'w', ArrowDown: 's', ArrowLeft: 'a', ArrowRight: 'd',
-  w: 'w', a: 'a', s: 's', d: 'd', W: 'w', A: 'a', S: 's', D: 'd',
+  w: 'w', a: 'a', s: 's', d: 'd',
 };
 window.addEventListener('keydown', (ev) => {
-  if (ev.target instanceof HTMLInputElement) return;
-  const k = KEY_TO_WASD[ev.key];
-  if (k) { game.keys.add(k); ev.preventDefault(); }
-  if (ev.key === ' ') { game.paused = !game.paused; updatePausedBadge(); ev.preventDefault(); }
+  const el = document.activeElement;
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
+  const k = ev.key.toLowerCase();
+  if (k === ' ') { game.paused = !game.paused; updatePausedBadge(); ev.preventDefault(); return; }
+  if (k >= '1' && k <= '5') {
+    const idx = Number(k) - 1;
+    game.setSpeed(idx);
+    setActive(speedsEl, 'data-speed', idx);
+    ev.preventDefault();
+    return;
+  }
+  if ((k >= '6' && k <= '9') || k === '0') {
+    const idx = k === '0' ? 4 : Number(k) - 6;
+    game.setZoom(idx);
+    setActive(zoomsEl, 'data-zoom', idx);
+    ev.preventDefault();
+    return;
+  }
+  const wasd = KEY_TO_WASD[ev.key] || (('wasd'.includes(k)) ? k : null);
+  if (wasd) { game.keys.add(wasd); ev.preventDefault(); }
 });
 window.addEventListener('keyup', (ev) => {
-  const k = KEY_TO_WASD[ev.key];
-  if (k) game.keys.delete(k);
+  const k = ev.key.toLowerCase();
+  const wasd = KEY_TO_WASD[ev.key] || (('wasd'.includes(k)) ? k : null);
+  if (wasd) game.keys.delete(wasd);
 });
+window.addEventListener('blur', () => { game.keys.clear(); game.panDir = { x: 0, y: 0 }; });
 
-// Drag to pan.
+// Drag to pan; a press that barely moves counts as a click (spawn a package).
 let dragging = false;
 let lastDrag = null;
+let pressStart = null;
 canvas.addEventListener('pointerdown', (ev) => {
+  if (!game.map) return;
   dragging = true;
   lastDrag = { x: ev.clientX, y: ev.clientY };
+  pressStart = { x: ev.clientX, y: ev.clientY };
   canvas.setPointerCapture(ev.pointerId);
 });
 canvas.addEventListener('pointermove', (ev) => {
-  updateTooltip(ev); // hover read-out
+  updateTooltip(ev);
   if (!dragging || !game.camera) return;
   const rect = canvas.getBoundingClientRect();
   const scale = canvas.width / rect.width;
   const dxPx = (ev.clientX - lastDrag.x) * scale;
   const dyPx = (ev.clientY - lastDrag.y) * scale;
   lastDrag = { x: ev.clientX, y: ev.clientY };
-  // Invert the iso projection for a 1:1 grab-and-drag feel.
   const tw = game.tileSize * 0.5;
   const th = game.tileSize * 0.25;
   const ax = -dxPx / tw;
   const ay = -dyPx / th;
   game.camera.pan((ay + ax) / 2, (ay - ax) / 2);
 });
-const endDrag = () => { dragging = false; lastDrag = null; };
-canvas.addEventListener('pointerup', endDrag);
-canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('pointerup', (ev) => {
+  if (pressStart && game.map) {
+    const moved = Math.hypot(ev.clientX - pressStart.x, ev.clientY - pressStart.y);
+    if (moved < DRAG_THRESHOLD) spawnAtPointer(ev);
+  }
+  dragging = false; lastDrag = null; pressStart = null;
+});
+canvas.addEventListener('pointercancel', () => { dragging = false; lastDrag = null; pressStart = null; });
 
-// Wheel to zoom.
 canvas.addEventListener('wheel', (ev) => {
+  if (!game.map) return;
   ev.preventDefault();
   const dir = ev.deltaY > 0 ? -1 : 1;
   game.setZoom(game.zoomIndex + dir);
   setActive(zoomsEl, 'data-zoom', game.zoomIndex);
 }, { passive: false });
 
-// --- hover tooltip --------------------------------------------------------
+// --- pointer → tile -------------------------------------------------------
 
-function updateTooltip(ev) {
-  if (!tooltip || !game.map || !game.camera) return;
+function pointerTile(ev) {
   const rect = canvas.getBoundingClientRect();
   const sx = (ev.clientX - rect.left) * (canvas.width / rect.width);
   const sy = (ev.clientY - rect.top) * (canvas.height / rect.height);
   const w = screenToWorld(sx, sy, game.camera, game.tileSize, canvas.width, canvas.height);
-  const tx = Math.floor(w.x);
-  const ty = Math.floor(w.y);
-  if (tx < 0 || ty < 0 || tx >= GRID_COLS || ty >= GRID_ROWS) {
-    tooltip.hidden = true;
-    game.hover = null;
-    return;
-  }
-  game.hover = { x: tx, y: ty };
-  const tile = game.map.tiles[ty][tx];
-  const kind = tile.type === TileType.WATER
-    ? t('legend.water')
-    : t('legend.richSoil');
+  return { x: Math.floor(w.x), y: Math.floor(w.y) };
+}
+
+function spawnAtPointer(ev) {
+  const { x, y } = pointerTile(ev);
+  if (x < 0 || y < 0 || x >= GRID_COLS || y >= GRID_ROWS) return;
+  game.spawnItemAt(x, y);
+}
+
+function updateTooltip(ev) {
+  if (!tooltip || !game.map || !game.camera) return;
+  const { x, y } = pointerTile(ev);
+  if (x < 0 || y < 0 || x >= GRID_COLS || y >= GRID_ROWS) { tooltip.hidden = true; game.hover = null; return; }
+  game.hover = { x, y };
+  const tile = game.map.tiles[y][x];
+  const kind = tile.type === TileType.WATER ? t('legend.water') : t('legend.richSoil');
+  const rect = canvas.getBoundingClientRect();
   tooltip.hidden = false;
   tooltip.style.left = `${ev.clientX - rect.left + 12}px`;
   tooltip.style.top = `${ev.clientY - rect.top + 12}px`;
-  tooltip.textContent =
-    `(${tx}, ${ty}) ${kind} · ${t('stat.avgFertility')} ${tile.fertility.toFixed(2)}`;
+  tooltip.textContent = `(${x}, ${y}) ${kind} · Lv ${tile.level}${tile.item ? ' · 荷物' : ''}`;
 }
-canvas.addEventListener('pointerleave', () => {
-  if (tooltip) tooltip.hidden = true;
-  game.hover = null;
-});
+canvas.addEventListener('pointerleave', () => { if (tooltip) tooltip.hidden = true; game.hover = null; });
 
 // --- boot -----------------------------------------------------------------
 
 applyLang(getLang());
-newMap(randomSeed());
-game.start();
-
-// Light-weight panel refresh poll (the canvas redraws every frame in the
-// game loop; the side panels only need to track slower-moving numbers).
+// Pre-fill a random seed so Generate is one click away.
+if (startSeed) startSeed.value = String(randomSeed());
 setInterval(refreshPanels, 200);

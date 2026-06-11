@@ -8,7 +8,14 @@
 
 import { mulberry32 } from '../core/rng.js';
 import { TileType, WaterKind, createTile } from './tile.js';
-import { WATER_LEVEL, MIN_WATER_FRACTION, MOISTURE_RANGE } from '../config.js';
+import {
+  WATER_LEVEL,
+  MIN_WATER_FRACTION,
+  MOISTURE_RANGE,
+  ELEV_LEVELS,
+  WATER_ELEV,
+  LAND_BASE,
+} from '../config.js';
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const smoothstep = (t) => t * t * (3 - 2 * t);
@@ -319,6 +326,27 @@ export function generateMap(cols, rows, seed, biome = null) {
 
       const soil = fertilityNoise(fx, fy);
       tile.fertility = clamp01(soil * 0.7 + tile.moisture * 0.3 + fertilityBonus);
+    }
+  }
+
+  // logi-sim terracing pass: quantize each tile's continuous elevation into
+  // ELEV_LEVELS discrete steps so the relief renders as crisp terraces and
+  // height becomes a gameplay factor. Water becomes a flat low basin; land
+  // levels always sit above the water surface.
+  const span = Math.max(1e-6, 1 - waterThreshold);
+  const lastLevel = Math.max(1, ELEV_LEVELS - 1);
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const tile = tiles[y][x];
+      if (tile.type === TileType.WATER) {
+        tile.level = 0;
+        tile.elevation = WATER_ELEV;
+        continue;
+      }
+      const norm = clamp01((tile.elevation - waterThreshold) / span);
+      const level = Math.round(norm * lastLevel);
+      tile.level = level;
+      tile.elevation = LAND_BASE + (level / lastLevel) * (1 - LAND_BASE);
     }
   }
 

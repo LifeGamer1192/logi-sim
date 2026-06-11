@@ -45,9 +45,13 @@ export function createTile({ x, y, type, elevation, fertility, moisture, sunligh
     fertility,
     moisture,
     sunlight,
-    plant: null,
-    tilled: false,
-    structure: null,
+    // logi-sim: discrete terrace height step (0..ELEV_LEVELS-1). Set by the
+    // quantization pass in mapGenerator; drives the stepped relief and the
+    // climb limit in pathfinding.
+    level: 0,
+    // logi-sim: the single item resting on this floor tile, or null. A tile
+    // holds at most one item (see items.js placeItemNear).
+    item: null,
     // α33: water-tile subtype (ocean / river / lake). null for land tiles.
     // Set by classifyWaterBodies() during map generation.
     waterKind: null,

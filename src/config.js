@@ -97,6 +97,35 @@ export const WATER_LEVEL = 0.4;
 export const MIN_WATER_FRACTION = 0.08;
 export const MOISTURE_RANGE = 6;
 
+// --- terracing (logi-sim) -------------------------------------------------
+// The map is rendered as discrete stepped terraces, not a smooth surface.
+// Land elevation is quantized into ELEV_LEVELS height steps so the relief
+// reads as crisp blocks and so height becomes a gameplay factor (workers
+// cannot climb a cliff taller than one step — see pathfinder maxStep).
+export const ELEV_LEVELS = 6;        // number of discrete land height steps
+export const WATER_ELEV = 0.05;      // flat, low elevation for the water basin
+export const LAND_BASE = 0.15;       // lowest land sits this high above 0
+export const BASE_ELEV = -0.6;       // map-border base block drops to here
+
+// --- teams & workers (logi-sim) -------------------------------------------
+// 1–8 logistics teams; each fields several workers (drivers) by default.
+export const TEAM_COLORS = [
+  { fill: '#d8643c', dark: '#8c3a1e' }, // A — orange
+  { fill: '#4a9be0', dark: '#235e8c' }, // B — blue
+  { fill: '#6fb24a', dark: '#3d6f2a' }, // C — green
+  { fill: '#c8a23c', dark: '#856516' }, // D — gold
+  { fill: '#b05ad0', dark: '#6c2f86' }, // E — purple
+  { fill: '#46c0b0', dark: '#1f6f66' }, // F — teal
+  { fill: '#d2607f', dark: '#8c3450' }, // G — rose
+  { fill: '#7c84d0', dark: '#414a86' }, // H — indigo
+];
+export const MAX_TEAMS = 8;
+export const DEFAULT_TEAM_COUNT = 2;
+export const DEFAULT_WORKERS_PER_TEAM = 4;
+
+// Worker walking speed in tiles per second.
+export const WORKER_SPEED = 3.5;
+
 // Camera panning speed in tiles per second while a key / arrow is held.
 export const CAMERA_SPEED = 22;
 

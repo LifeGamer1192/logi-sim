@@ -6,6 +6,7 @@ dist/
 proto-plan/
 .claude/
 README_WORK.md
+SPEC.md
 
 # Logs and OS cruft
 *.log

@@ -13,6 +13,50 @@
     <title>Logi Sim</title>
   </head>
   <body>
+    <!-- Setup overlay. The simulation does not start until Generate. -->
+    <div id="start-screen" class="start-screen">
+      <div class="start-card">
+        <h2 data-i18n="start.title">Generate a new world</h2>
+        <p class="start-hint">段々の地形でチームの配送員が荷物を運びます。</p>
+
+        <div class="start-row">
+          <span class="start-row-label" data-i18n="panel.language">Language</span>
+          <div class="tools" id="start-langs">
+            <button type="button" data-lang="en" class="active">EN</button>
+            <button type="button" data-lang="ja">日本語</button>
+          </div>
+        </div>
+
+        <div class="start-row">
+          <span class="start-row-label" data-i18n="label.seed">Seed</span>
+          <div class="row">
+            <input id="start-seed" type="text" inputmode="numeric" autocomplete="off" placeholder="(random)">
+            <button id="start-seed-random" type="button" data-i18n="btn.random">Random</button>
+          </div>
+        </div>
+
+        <div class="start-row">
+          <span class="start-row-label">Teams / チーム数</span>
+          <label class="group-slider">
+            <input id="start-team-count" type="range" min="1" max="8" value="2">
+            <span id="start-team-count-label">2</span>
+          </label>
+        </div>
+
+        <div class="start-row">
+          <span class="start-row-label">Workers / team · 1チーム人数</span>
+          <label class="group-slider">
+            <input id="start-workers" type="range" min="1" max="12" value="4">
+            <span id="start-workers-label">4</span>
+          </label>
+        </div>
+
+        <div class="start-actions">
+          <button id="start-generate" type="button" class="primary" data-i18n="btn.generate">Generate</button>
+        </div>
+      </div>
+    </div>
+
     <div id="app">
       <header class="app-header">
         <h1>Logi Sim <span class="version" data-i18n="app.version">alpha 1</span></h1>
@@ -40,6 +84,8 @@
           <details class="control-group" open>
             <summary class="label" data-i18n="panel.season">Season</summary>
             <dl id="env-stats" class="stats stats-2col"></dl>
+            <p class="reason" id="team-summary"></p>
+            <p class="reason">クリックで荷物を1個置けます。配送員が拠点へ運びます。</p>
           </details>
 
           <details class="control-group" open>
@@ -61,6 +107,7 @@
               <button type="button" data-zoom="3" data-i18n="zoom.medium" class="active">Medium</button>
               <button type="button" data-zoom="4" data-i18n="zoom.large">Large</button>
             </div>
+            <p class="reason">ショートカット: 1–5 速度 / 6–9・0 ズーム / Space 停止 / WASD・矢印 移動</p>
           </details>
 
           <details class="control-group" open>
@@ -86,10 +133,8 @@
               <button type="button" data-lang="en" class="active">EN</button>
               <button type="button" data-lang="ja">日本語</button>
             </div>
-            <p class="reason-label" data-i18n="label.seed">Seed</p>
-            <input id="seed" type="text" inputmode="numeric" autocomplete="off" placeholder="(random)">
             <button id="regenerate" type="button" class="primary" data-i18n="btn.regenerate">
-              Regenerate (random)
+              Regenerate (setup)
             </button>
           </details>
         </aside>

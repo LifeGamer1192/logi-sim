@@ -100,6 +100,10 @@ function reconstruct(cameFrom, startIdx, endIdx, cols) {
 export function findPath(map, start, goal, blockFences = false, opts = {}) {
   const maxIterations = opts.maxIterations ?? 5000;
   const fallbackToNearest = !!opts.fallbackToNearest;
+  // logi-sim: cap how many terrace steps a single move may climb/descend.
+  // Default Infinity keeps legacy callers unrestricted; workers pass 1 so a
+  // cliff taller than one step blocks the route (height matters).
+  const maxStep = opts.maxStep ?? Infinity;
 
   // The start tile is always allowed to leave (an animal pinned on a fresh
   // fence can still walk off it); the goal and every step honour blockFences.
@@ -152,6 +156,11 @@ export function findPath(map, start, goal, blockFences = false, opts = {}) {
       const nx = cur.x + dirs[d];
       const ny = cur.y + dirs[d + 1];
       if (!isWalkable(map, nx, ny, blockFences)) continue;
+      if (maxStep !== Infinity) {
+        const lc = map.tiles[cur.y][cur.x].level || 0;
+        const ln = map.tiles[ny][nx].level || 0;
+        if (Math.abs(ln - lc) > maxStep) continue;
+      }
       const ni = idx(nx, ny);
       if (closed[ni]) continue;
       const tentative = gScore[ci] + 1;
