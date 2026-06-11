@@ -13,20 +13,19 @@
 // Isometric tile aspect — diamonds are twice as wide as they are tall.
 export const ISO_TILE_W_RATIO = 1.0;   // diamond half-width  = ts * 0.5
 export const ISO_TILE_H_RATIO = 0.5;   // diamond half-height = ts * 0.25
-// Pixels of vertical lift per 1.0 of elevation. α36 followup bumped
-// 1.0 → 3.0 because away from shorelines the map still looked nearly
-// flat. At 3.0 a fully-tall mountain rises three tile-widths above the
-// plains; gentle hills are now obvious mounds rather than subtle tints.
-export const ISO_ELEV_RATIO = 3.0;
+// Pixels of vertical lift per 1.0 of elevation. logi-sim uses gentle,
+// uniform terraces: the data already steps one level at a time (the
+// slope-limit pass in mapGenerator), so the visual lift is kept small and
+// LINEAR. With 6 levels mapped to elevation [LAND_BASE..1], each level rises
+// ~0.17 of elevation → ~0.27·ts on screen — a clear but modest step rather
+// than the towering cliffs the old cubic curve produced.
+export const ISO_ELEV_RATIO = 1.6;
 
-// α36 followup #2: non-linear lift curve. Linear elevation looked dull —
-// hills barely bumped up while "high mountains" only rose ~3 tiles.
-// f(e) = e + 4·e³ gives ~2× lift at e=0.5 (hill territory) and ~4-5× at
-// e≈0.95 (rare peaks), with the cubic term keeping plains (e<0.3) almost
-// flat. Storage keeps raw 0..1 elevation; only the visual projection
-// + hit-test apply this curve.
+// Linear lift: every terrace step is the same modest height (no high-altitude
+// amplification). Storage keeps raw 0..1 elevation; only the visual
+// projection + hit-test apply this.
 export function elevationLift(e) {
-  return e + 4 * e * e * e;
+  return e;
 }
 
 /**
