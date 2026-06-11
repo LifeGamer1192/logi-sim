@@ -151,6 +151,39 @@ export const START_STONE = 4;
 // A forest/stone hill counts as "near" a camp within this manhattan distance.
 export const HARVEST_NEAR = 8;
 
+// Camps ship their buffered goods to the team treasury this often (sim-sec).
+export const DRAIN_INTERVAL = 2;
+
+// --- economy & trade (logi-sim) -------------------------------------------
+// Each team owns a treasury (currency + bulk wood/stone). Players start rich
+// in currency and wood; stone is a small bootstrap so the first facilities
+// can go up before any mining / buying.
+export const INIT_CURRENCY = 1000;
+export const INIT_WOOD = 500;
+export const INIT_STONE = 30;
+
+// Goods that can be traded at a post.
+export const TRADE_GOODS = ['wood', 'stone'];
+
+// Base unit prices per good (buy > sell = the post's spread). Per-post tables
+// start from these with a small seeded jitter.
+export const TRADE_BASE = {
+  wood: { sell: 2, buy: 3 },
+  stone: { sell: 4, buy: 6 },
+};
+
+// Dynamic-price knobs. Selling pushes the sell price down (oversupply),
+// buying pushes the buy price up (scarcity); both drift back to base over
+// time (demand recovers).
+export const PRICE_SELL_STEP = 0.03;  // sellMult drop per unit sold
+export const PRICE_BUY_STEP = 0.04;   // buyMult rise per unit bought
+export const PRICE_SELL_FLOOR = 0.4;  // sellMult never below this
+export const PRICE_BUY_CEIL = 2.5;    // buyMult never above this
+export const PRICE_RECOVER = 0.05;    // per-second pull of both mults toward 1
+
+// How often (sim-sec) a running auto-script makes one decision.
+export const SCRIPT_INTERVAL = 1.5;
+
 // Camera panning speed in tiles per second while a key / arrow is held.
 export const CAMERA_SPEED = 22;
 

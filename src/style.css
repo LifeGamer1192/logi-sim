@@ -1802,3 +1802,18 @@ button.primary:hover {
   font-size: 12px;
   font-style: italic;
 }
+
+/* logi-sim teams + trade panels */
+.teams-panel, .trade-panel { display: flex; flex-direction: column; gap: 6px; }
+.team-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 3px 4px; border-radius: 4px; }
+.team-row-active { outline: 1px solid #888; background: rgba(255,255,255,0.05); }
+.team-pick { width: 22px; height: 22px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.4); color: #11130f; font-weight: 700; cursor: pointer; }
+.team-stock { font-size: 0.8rem; opacity: 0.9; }
+.team-ctrls { display: flex; gap: 3px; margin-left: auto; }
+button.mini { font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; border: 1px solid #4a5360; background: #2a313c; color: #dfe6ef; cursor: pointer; }
+button.mini.active { background: #5f8fae; color: #11130f; border-color: #5f8fae; }
+.trade-post { border: 1px solid #333d4d; border-radius: 5px; padding: 4px 6px; }
+.tp-head { font-size: 0.8rem; font-weight: 700; margin-bottom: 3px; }
+.tp-good { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 0.78rem; margin-bottom: 2px; }
+.tp-name { width: 1.4em; font-weight: 700; }
+.tp-price { min-width: 3.4em; opacity: 0.9; }

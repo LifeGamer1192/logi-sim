@@ -20,22 +20,22 @@ import {
   STONEHILL_COUNT,
   HARVEST_NEAR,
   BUILD_COST,
-  START_WOOD,
-  START_STONE,
+  DRAIN_INTERVAL,
 } from './config.js';
+import { mulberry32 } from './core/rng.js';
 import { generateMap, mapStats } from './map/mapGenerator.js';
 import { TileType } from './map/tile.js';
 import { Camera } from './render/camera.js';
 import { Renderer } from './render/renderer.js';
 import { PathCache, findPath } from './core/pathfinder.js';
 import { clockInfo, temperatureAt, daylightAt, SEASON_TINT } from './season.js';
-import { createTeam, clampTeamCount } from './teams.js';
+import { createTeam, clampTeamCount, defaultScriptFor } from './teams.js';
 import { Worker } from './entities/worker.js';
 import { createItem } from './items.js';
 import { createForest, createStoneHill, harvestFeature, regenFeature, canHarvest } from './features.js';
-import {
-  createBuilding, isFull, deposit, teamStock, takeFromTeam,
-} from './buildings.js';
+import { createBuilding, isFull, deposit } from './buildings.js';
+import { createTradePost, tickTradePost, doSell, doBuy } from './trade.js';
+import { runScript } from './scripts.js';
 
 export class Game {
   constructor(canvas) {
@@ -62,7 +62,10 @@ export class Game {
     this.teams = [];
     this.workers = [];
     this.buildings = [];
-    this.features = []; // {tile coords} list for regen ticks
+    this.features = [];   // {x,y} list for regen ticks
+    this.tradePosts = [];
+    this._rng = null;     // seeded RNG for deterministic placement
+    this._drainTimer = 0;
 
     this.clock = 0;
     this.environment = null;
@@ -94,6 +97,10 @@ export class Game {
     const teamCount = clampTeamCount(setup.teamCount ?? DEFAULT_TEAM_COUNT);
     const workersPerTeam = Math.max(1, Math.round(setup.workersPerTeam ?? DEFAULT_WORKERS_PER_TEAM));
 
+    // Deterministic placement RNG seeded from the map seed, so the same seed
+    // reproduces the same map AND the same features / depots / trade posts.
+    this._rng = mulberry32((seed >>> 0) ^ 0x9e3779b9);
+
     this.map = generateMap(GRID_COLS, GRID_ROWS, seed);
     this.map.pathCache = new PathCache();
     this.stats = mapStats(this.map);
@@ -101,28 +108,28 @@ export class Game {
 
     this.buildings = [];
     this.features = [];
+    this.tradePosts = [];
     this.teams = [];
     this.workers = [];
+    this._drainTimer = 0;
 
-    // Scatter forests and stone hills on empty land.
+    // Scatter forests and stone hills on empty land (seeded).
     this._scatterFeatures(FOREST_COUNT, createForest);
     this._scatterFeatures(STONEHILL_COUNT, createStoneHill);
 
-    // Teams: depots spread around the centre, each with a pre-stocked
-    // warehouse, a starter logging camp + stone cutter, and its workers.
+    // One trade post per map edge, at a seeded random spot along that edge.
+    this._placeTradePosts();
+
+    // Teams: depots spread around the centre, each with starter facilities
+    // (paid from the treasury) and its workers. Default scripts: A/B hasty,
+    // C long-term.
     const depots = this._pickDepotTiles(teamCount);
     for (let id = 0; id < teamCount; id++) {
-      const team = createTeam(id, depots[id]);
-      team.buildings = [];
+      const team = createTeam(id, depots[id], defaultScriptFor(id));
       this.teams.push(team);
 
-      // Founding warehouse on the depot tile (free, pre-stocked).
-      this._placeBuilding(team, 'warehouse', depots[id].x, depots[id].y, {
-        wood: START_WOOD, stone: START_STONE,
-      });
-
       // Starter facilities next to the nearest forest / stone hill, paid for
-      // from the warehouse so the harvest loop runs from the first frame.
+      // from the treasury so the harvest loop runs from the first frame.
       this._autoBuildStarter(team, 'loggingCamp', 'forest');
       this._autoBuildStarter(team, 'stoneCutter', 'stonehill');
 
@@ -141,6 +148,32 @@ export class Game {
     this._updateEnvironment();
   }
 
+  // Place one trade post (a 換金所 + 購買所 pair) on each of the four edges.
+  _placeTradePosts() {
+    const { cols, rows } = this.map;
+    const edges = ['top', 'bottom', 'left', 'right'];
+    for (const edge of edges) {
+      const post = createTradePost(this._rng, edge);
+      // Pick a seeded spot along the edge, then snap inward to open land.
+      let ex; let ey;
+      if (edge === 'top') { ex = 1 + ((this._rng() * (cols - 2)) | 0); ey = 1; }
+      else if (edge === 'bottom') { ex = 1 + ((this._rng() * (cols - 2)) | 0); ey = rows - 2; }
+      else if (edge === 'left') { ex = 1; ey = 1 + ((this._rng() * (rows - 2)) | 0); }
+      else { ex = cols - 2; ey = 1 + ((this._rng() * (rows - 2)) | 0); }
+      const sell = this._bfsFind(ex, ey, (a, b) => this._isOpenLand(a, b));
+      if (!sell) continue;
+      const buy = this._bfsFind(sell.x, sell.y, (a, b) =>
+        this._isOpenLand(a, b) && !(a === sell.x && b === sell.y));
+      if (!buy) continue;
+      post.x = sell.x; post.y = sell.y;
+      post.sell = { x: sell.x, y: sell.y };
+      post.buy = { x: buy.x, y: buy.y };
+      this.map.tiles[sell.y][sell.x].trade = { post, role: 'sell' };
+      this.map.tiles[buy.y][buy.x].trade = { post, role: 'buy' };
+      this.tradePosts.push(post);
+    }
+  }
+
   // --- setup helpers --------------------------------------------------------
 
   _isLand(x, y) {
@@ -148,17 +181,18 @@ export class Game {
     return this.map.tiles[y][x].type === TileType.LAND;
   }
 
-  /** Land tile with nothing on it (no item / feature / building). */
+  /** Land tile with nothing on it (no item / feature / building / trade). */
   _isOpenLand(x, y) {
     if (!this._isLand(x, y)) return false;
     const t = this.map.tiles[y][x];
-    return t.item == null && t.feature == null && t.building == null;
+    return t.item == null && t.feature == null && t.building == null && t.trade == null;
   }
 
   _randomLandTile() {
+    const rng = this._rng || Math.random;
     for (let tries = 0; tries < 40; tries++) {
-      const x = (Math.random() * this.map.cols) | 0;
-      const y = (Math.random() * this.map.rows) | 0;
+      const x = (rng() * this.map.cols) | 0;
+      const y = (rng() * this.map.rows) | 0;
       if (this._isOpenLand(x, y)) return { x, y };
     }
     return null;
@@ -265,17 +299,42 @@ export class Game {
 
   /**
    * Player-driven build. Deducts BUILD_COST (wood1 + stone1) from the team's
-   * stored stock and puts the facility on the tile. Returns the building, or
-   * null if the tile is blocked or the team cannot afford it.
+   * treasury and puts the facility on the tile. Returns the building, or null
+   * if the tile is blocked or the team cannot afford it.
    */
   build(teamId, kind, x, y) {
     const team = this.teams[teamId];
     if (!team || !this.canBuildAt(x, y)) return null;
-    const stock = teamStock(team.buildings);
-    if (stock.wood < BUILD_COST.wood || stock.stone < BUILD_COST.stone) return null;
-    takeFromTeam(team.buildings, 'wood');
-    takeFromTeam(team.buildings, 'stone');
+    if (team.stock.wood < BUILD_COST.wood || team.stock.stone < BUILD_COST.stone) return null;
+    team.stock.wood -= BUILD_COST.wood;
+    team.stock.stone -= BUILD_COST.stone;
     return this._placeBuilding(team, kind, x, y);
+  }
+
+  // --- trade (player-driven; always takes priority over scripts) ------------
+
+  sellAt(teamId, postIndex, good, qty) {
+    const team = this.teams[teamId];
+    const post = this.tradePosts[postIndex];
+    if (!team || !post) return null;
+    return doSell(team, post, good, qty);
+  }
+  buyAt(teamId, postIndex, good, qty) {
+    const team = this.teams[teamId];
+    const post = this.tradePosts[postIndex];
+    if (!team || !post) return null;
+    return doBuy(team, post, good, qty);
+  }
+
+  // --- auto-script control --------------------------------------------------
+
+  setTeamScript(teamId, scriptId) {
+    const team = this.teams[teamId];
+    if (team) team.scriptId = scriptId;
+  }
+  setScriptRunning(teamId, running) {
+    const team = this.teams[teamId];
+    if (team) team.scriptRunning = !!running;
   }
 
   /** Auto-place a starter camp/cutter next to the nearest matching feature. */
@@ -335,6 +394,30 @@ export class Game {
       if (feat) regenFeature(feat, simDt);
     }
     for (const w of this.workers) this._stepWorker(w, simDt);
+
+    // Demand recovers at every trade post (prices drift back to base).
+    for (const post of this.tradePosts) tickTradePost(post, simDt);
+
+    // Camps ship their buffered goods into the team treasury.
+    this._drainTimer += simDt;
+    if (this._drainTimer >= DRAIN_INTERVAL) {
+      this._drainTimer = 0;
+      this._drainCamps();
+    }
+
+    // Running auto-scripts act on their own timer.
+    for (const team of this.teams) runScript(team, this.tradePosts, simDt);
+  }
+
+  // Move one unit of buffered material from each camp/cutter to its team's
+  // treasury (the facility is a buffer; the treasury is the bank).
+  _drainCamps() {
+    for (const b of this.buildings) {
+      const team = this.teams[b.teamId];
+      if (!team) continue;
+      if (b.kind === 'loggingCamp' && b.wood > 0) { b.wood -= 1; team.stock.wood += 1; }
+      else if (b.kind === 'stoneCutter' && b.stone > 0) { b.stone -= 1; team.stock.stone += 1; }
+    }
   }
 
   _routeTo(worker, gx, gy) {

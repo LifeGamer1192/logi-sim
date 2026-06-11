@@ -38,8 +38,8 @@
         <div class="start-row">
           <span class="start-row-label">Teams / チーム数</span>
           <label class="group-slider">
-            <input id="start-team-count" type="range" min="1" max="8" value="2">
-            <span id="start-team-count-label">2</span>
+            <input id="start-team-count" type="range" min="1" max="8" value="3">
+            <span id="start-team-count-label">3</span>
           </label>
         </div>
 
@@ -85,6 +85,19 @@
             <summary class="label" data-i18n="panel.season">Season</summary>
             <dl id="env-stats" class="stats stats-2col"></dl>
             <p class="reason" id="team-summary"></p>
+          </details>
+
+          <details class="control-group" open>
+            <summary class="label">Teams / オートスクリプト</summary>
+            <div id="teams-panel" class="teams-panel"></div>
+            <p class="reason">拙速＝目先優先 / 長期＝相場回復を待つ。実行/停止は随時切替。手動操作が常に優先。</p>
+          </details>
+
+          <details class="control-group" open>
+            <summary class="label">Trade / 交易所</summary>
+            <p class="reason-label">操作チーム: <b id="trade-team-label">A</b></p>
+            <div id="trade-panel" class="trade-panel"></div>
+            <p class="reason">換＝換金所(売) / 買＝購買所(買)。同じ物資を売買し続けると単価が動き、時間で戻ります。</p>
           </details>
 
           <details class="control-group" open>

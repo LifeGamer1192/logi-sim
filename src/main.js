@@ -5,7 +5,10 @@ import { t, setLang, getLang } from './i18n.js';
 import { Game } from './game.js';
 import { screenToWorld } from './render/camera.js';
 import { TileType } from './map/tile.js';
-import { teamLetter } from './teams.js';
+import { teamLetter, SCRIPT_IDS } from './teams.js';
+import { SCRIPTS } from './scripts.js';
+import { sellPrice, buyPrice } from './trade.js';
+import { TRADE_GOODS } from './config.js';
 
 const canvas = document.getElementById('map');
 const game = new Game(canvas);
@@ -26,6 +29,9 @@ const pausedBadge = $('paused-badge');
 const buildToolsEl = $('build-tools');
 const teamSelectEl = $('team-select');
 const buildHintEl = $('build-hint');
+const teamsPanelEl = $('teams-panel');
+const tradePanelEl = $('trade-panel');
+const tradeTeamLabel = $('trade-team-label');
 
 let started = false;   // becomes true after the first Generate
 let buildTool = null;  // null = inspect; else 'warehouse'|'loggingCamp'|'stoneCutter'
@@ -113,6 +119,8 @@ function refreshPanels() {
   updateMapStats();
   updateEnvPanel();
   updateTeamSummary();
+  renderTeamsPanel();
+  renderTradePanel();
   updateLegend();
   updatePausedBadge();
 }
@@ -215,7 +223,9 @@ function generate() {
   game.newMap(seed, { teamCount, workersPerTeam });
   if (startScreen) startScreen.hidden = true;
   activeTeam = Math.min(activeTeam, teamCount - 1);
+  teamsSig = tradeSig = null;
   renderTeamSelect();
+  if (tradeTeamLabel) tradeTeamLabel.textContent = teamLetter(activeTeam);
   if (buildHintEl) buildHintEl.textContent = buildHintIdle();
   refreshPanels();
   if (!started) { started = true; game.start(); }
@@ -252,9 +262,95 @@ if (teamSelectEl) {
   teamSelectEl.addEventListener('click', (ev) => {
     const btn = ev.target.closest('button[data-team]');
     if (!btn) return;
-    activeTeam = Number(btn.dataset.team);
-    setActive(teamSelectEl, 'data-team', activeTeam);
-    if (buildHintEl) buildHintEl.textContent = buildHintIdle();
+    setActiveTeam(Number(btn.dataset.team));
+  });
+}
+
+function setActiveTeam(i) {
+  activeTeam = i;
+  setActive(teamSelectEl, 'data-team', activeTeam);
+  if (tradeTeamLabel) tradeTeamLabel.textContent = teamLetter(activeTeam);
+  if (buildHintEl) buildHintEl.textContent = buildHintIdle();
+  teamsSig = tradeSig = null; // force panel refresh
+}
+
+// --- Teams panel (treasury + auto-script control) -------------------------
+
+const GOOD_LABEL = { wood: '木', stone: '石', currency: '¥' };
+const EDGE_LABEL = { top: '北', bottom: '南', left: '西', right: '東' };
+
+let teamsSig = null;
+function renderTeamsPanel() {
+  if (!teamsPanelEl || !game.teams.length) return;
+  const sig = game.teams.map((tm) =>
+    `${tm.id}:${tm.scriptId}:${tm.scriptRunning}:${tm.stock.currency}:${tm.stock.wood}:${tm.stock.stone}:${activeTeam}`).join('|');
+  if (sig === teamsSig) return;
+  teamsSig = sig;
+  teamsPanelEl.innerHTML = game.teams.map((tm) => {
+    const scripts = SCRIPT_IDS.map((sid) =>
+      `<button type="button" data-team="${tm.id}" data-script="${sid}" class="mini${tm.scriptId === sid ? ' active' : ''}">${SCRIPTS[sid].label}</button>`).join('');
+    const run = `<button type="button" data-team="${tm.id}" data-run="1" class="mini${tm.scriptRunning ? ' active' : ''}">${tm.scriptRunning ? '実行中' : '停止'}</button>`;
+    const sel = tm.id === activeTeam ? ' team-row-active' : '';
+    return (
+      `<div class="team-row${sel}" data-team="${tm.id}">` +
+      `<button type="button" class="team-pick" data-pick="${tm.id}" style="background:${tm.color.fill}">${teamLetter(tm.id)}</button>` +
+      `<span class="team-stock">¥${tm.stock.currency} 木${tm.stock.wood} 石${tm.stock.stone}</span>` +
+      `<span class="team-ctrls">${scripts}${run}</span>` +
+      `</div>`
+    );
+  }).join('');
+}
+if (teamsPanelEl) {
+  teamsPanelEl.addEventListener('click', (ev) => {
+    const pick = ev.target.closest('button[data-pick]');
+    if (pick) { setActiveTeam(Number(pick.dataset.pick)); return; }
+    const sBtn = ev.target.closest('button[data-script]');
+    if (sBtn) { game.setTeamScript(Number(sBtn.dataset.team), sBtn.dataset.script); teamsSig = null; renderTeamsPanel(); return; }
+    const rBtn = ev.target.closest('button[data-run]');
+    if (rBtn) {
+      const id = Number(rBtn.dataset.team);
+      game.setScriptRunning(id, !game.teams[id].scriptRunning);
+      teamsSig = null; renderTeamsPanel();
+    }
+  });
+}
+
+// --- Trade panel (manual buy/sell, always allowed) ------------------------
+
+let tradeSig = null;
+function renderTradePanel() {
+  if (!tradePanelEl || !game.tradePosts) return;
+  // Signature on rounded prices so we only rebuild when a displayed number
+  // actually changes (keeps buttons clickable between rebuilds).
+  const sig = game.tradePosts.map((p, i) =>
+    `${i}:${p.edge}:` + TRADE_GOODS.map((g) => `${sellPrice(p, g)}/${buyPrice(p, g)}`).join(',')).join('|') + `#${activeTeam}`;
+  if (sig === tradeSig) return;
+  tradeSig = sig;
+  tradePanelEl.innerHTML = game.tradePosts.map((p, i) => {
+    const goods = TRADE_GOODS.map((g) =>
+      `<div class="tp-good"><span class="tp-name">${GOOD_LABEL[g]}</span>` +
+      `<span class="tp-price">換${sellPrice(p, g)}</span>` +
+      `<button type="button" class="mini" data-post="${i}" data-good="${g}" data-act="sell" data-qty="1">売1</button>` +
+      `<button type="button" class="mini" data-post="${i}" data-good="${g}" data-act="sell" data-qty="10">売10</button>` +
+      `<span class="tp-price">買${buyPrice(p, g)}</span>` +
+      `<button type="button" class="mini" data-post="${i}" data-good="${g}" data-act="buy" data-qty="1">買1</button>` +
+      `<button type="button" class="mini" data-post="${i}" data-good="${g}" data-act="buy" data-qty="10">買10</button>` +
+      `</div>`).join('');
+    return `<div class="trade-post"><div class="tp-head">${EDGE_LABEL[p.edge] || p.edge} 交易所</div>${goods}</div>`;
+  }).join('');
+}
+if (tradePanelEl) {
+  tradePanelEl.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-act]');
+    if (!btn) return;
+    const post = Number(btn.dataset.post);
+    const good = btn.dataset.good;
+    const qty = Number(btn.dataset.qty);
+    // Manual command — always executes, regardless of script run/stop state.
+    if (btn.dataset.act === 'sell') game.sellAt(activeTeam, post, good, qty);
+    else game.buyAt(activeTeam, post, good, qty);
+    teamsSig = tradeSig = null; // reflect new treasury / prices at once
+    renderTeamsPanel(); renderTradePanel();
   });
 }
 

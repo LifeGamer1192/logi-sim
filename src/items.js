@@ -24,7 +24,8 @@ export function canHoldItem(map, x, y) {
     tile.type === TileType.LAND &&
     tile.item == null &&
     tile.building == null &&
-    tile.feature == null
+    tile.feature == null &&
+    tile.trade == null
   );
 }
 

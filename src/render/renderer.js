@@ -176,6 +176,7 @@ export class Renderer {
         const e = tile.elevation;
         if (tile.feature) drawables.push({ kind: 'feature', x: x + 0.5, y: y + 0.5, e, ref: tile.feature });
         if (tile.building) drawables.push({ kind: 'building', x: x + 0.5, y: y + 0.5, e, ref: tile.building });
+        if (tile.trade) drawables.push({ kind: 'trade', x: x + 0.5, y: y + 0.5, e, ref: tile.trade });
         if (tile.item) drawables.push({ kind: 'item', x: x + 0.5, y: y + 0.5, e, ref: tile.item });
       }
     }
@@ -191,6 +192,7 @@ export class Renderer {
       const p = proj(d.x, d.y, d.e);
       if (d.kind === 'feature') this._drawFeature(ctx, p.x, p.y, ts, d.ref);
       else if (d.kind === 'building') this._drawBuilding(ctx, p.x, p.y, ts, d.ref, scene.teams);
+      else if (d.kind === 'trade') this._drawTrade(ctx, p.x, p.y, ts, d.ref);
       else if (d.kind === 'item') this._drawItem(ctx, p.x, p.y, ts, d.ref);
       else this._drawWorker(ctx, p.x, p.y, ts, d.ref, scene.teams);
     }
@@ -269,6 +271,37 @@ export class Renderer {
       ctx.textBaseline = 'middle';
       ctx.fillText(String(n), cx, cy - h * 0.45);
     }
+  }
+
+  // Trade-post endpoint: a striped market stall. 換金所 (sell) is gold with a
+  // coin; 購買所 (buy) is teal with a basket.
+  _drawTrade(ctx, cx, cy, ts, trade) {
+    const sell = trade.role === 'sell';
+    const w = Math.max(9, ts * 0.8);
+    const h = Math.max(8, ts * 0.6);
+    // post + canopy
+    ctx.fillStyle = '#caa15a';
+    ctx.fillRect(cx - w / 2, cy - h, w, h * 0.7);
+    ctx.fillStyle = sell ? '#e8c44e' : '#46c0b0';
+    ctx.fillRect(cx - w / 2, cy - h - h * 0.28, w, h * 0.32);
+    ctx.strokeStyle = 'rgba(40,30,16,0.75)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx - w / 2, cy - h - h * 0.28, w, h * 0.28 + h * 0.7);
+    // canopy stripes
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.beginPath();
+    for (let i = 1; i < 4; i++) {
+      const sx = cx - w / 2 + (w / 4) * i;
+      ctx.moveTo(sx, cy - h - h * 0.28);
+      ctx.lineTo(sx, cy - h + h * 0.04);
+    }
+    ctx.stroke();
+    // role glyph
+    ctx.fillStyle = sell ? '#7a5c10' : '#15524b';
+    ctx.font = `bold ${Math.max(8, Math.round(ts * 0.5))}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(sell ? '換' : '買', cx, cy - h * 0.30);
   }
 
   _drawItem(ctx, cx, cy, ts, item) {

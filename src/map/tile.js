@@ -58,6 +58,9 @@ export function createTile({ x, y, type, elevation, fertility, moisture, sunligh
     // logi-sim: a built facility on this tile (warehouse / loggingCamp /
     // stoneCutter), or null. See buildings.js.
     building: null,
+    // logi-sim: a trade-post endpoint on this tile, or null. Shape:
+    // { post, role: 'sell' | 'buy' }. See trade.js.
+    trade: null,
     // α33: water-tile subtype (ocean / river / lake). null for land tiles.
     // Set by classifyWaterBodies() during map generation.
     waterKind: null,
