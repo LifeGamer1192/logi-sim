@@ -6,7 +6,6 @@ import { Game } from './game.js';
 import { screenToWorld } from './render/camera.js';
 import { TileType } from './map/tile.js';
 import { teamLetter, SCRIPT_IDS } from './teams.js';
-import { SCRIPTS } from './scripts.js';
 import { sellPrice, buyPrice } from './trade.js';
 import { TRADE_GOODS } from './config.js';
 
@@ -176,6 +175,9 @@ function applyLang(lang) {
   }
   setActive(langsEl, 'data-lang', lang);
   setActive($('start-langs'), 'data-lang', lang);
+  // The dynamic panels embed translated text — force them to rebuild.
+  teamsSig = tradeSig = null;
+  if (buildHintEl && !buildHintEl.classList.contains('warn')) buildHintEl.textContent = buildHintIdle();
   refreshPanels();
 }
 function bindLangStrip(el) {
@@ -276,9 +278,6 @@ function setActiveTeam(i) {
 
 // --- Teams panel (treasury + auto-script control) -------------------------
 
-const GOOD_LABEL = { wood: '木', stone: '石', currency: '¥' };
-const EDGE_LABEL = { top: '北', bottom: '南', left: '西', right: '東' };
-
 function teamHauling(tm) {
   const trader = tm.workers[0];
   return (trader && trader.job === 'trade') || tm.tradeQueue.length > 0;
@@ -293,14 +292,14 @@ function renderTeamsPanel() {
   teamsSig = sig;
   teamsPanelEl.innerHTML = game.teams.map((tm) => {
     const scripts = SCRIPT_IDS.map((sid) =>
-      `<button type="button" data-team="${tm.id}" data-script="${sid}" class="mini${tm.scriptId === sid ? ' active' : ''}">${SCRIPTS[sid].label}</button>`).join('');
-    const run = `<button type="button" data-team="${tm.id}" data-run="1" class="mini${tm.scriptRunning ? ' active' : ''}">${tm.scriptRunning ? '実行中' : '停止'}</button>`;
+      `<button type="button" data-team="${tm.id}" data-script="${sid}" class="mini${tm.scriptId === sid ? ' active' : ''}">${t('script.' + sid)}</button>`).join('');
+    const run = `<button type="button" data-team="${tm.id}" data-run="1" class="mini${tm.scriptRunning ? ' active' : ''}">${tm.scriptRunning ? t('state.running') : t('state.stopped')}</button>`;
     const sel = tm.id === activeTeam ? ' team-row-active' : '';
     const haul = teamHauling(tm) ? ` <span class="haul">🚚${tm.tradeQueue.length ? '+' + tm.tradeQueue.length : ''}</span>` : '';
     return (
       `<div class="team-row${sel}" data-team="${tm.id}">` +
       `<button type="button" class="team-pick" data-pick="${tm.id}" style="background:${tm.color.fill}">${teamLetter(tm.id)}</button>` +
-      `<span class="team-stock">¥${tm.stock.currency} 木${tm.stock.wood} 石${tm.stock.stone}${haul}</span>` +
+      `<span class="team-stock">¥${tm.stock.currency} ${t('good.wood')}${tm.stock.wood} ${t('good.stone')}${tm.stock.stone}${haul}</span>` +
       `<span class="team-ctrls">${scripts}${run}</span>` +
       `</div>`
     );
@@ -334,15 +333,15 @@ function renderTradePanel() {
   tradeSig = sig;
   tradePanelEl.innerHTML = game.tradePosts.map((p, i) => {
     const goods = TRADE_GOODS.map((g) =>
-      `<div class="tp-good"><span class="tp-name">${GOOD_LABEL[g]}</span>` +
-      `<span class="tp-price">換${sellPrice(p, g)}</span>` +
-      `<button type="button" class="mini" data-post="${i}" data-good="${g}" data-act="sell" data-qty="1">売1</button>` +
-      `<button type="button" class="mini" data-post="${i}" data-good="${g}" data-act="sell" data-qty="10">売10</button>` +
-      `<span class="tp-price">買${buyPrice(p, g)}</span>` +
-      `<button type="button" class="mini" data-post="${i}" data-good="${g}" data-act="buy" data-qty="1">買1</button>` +
-      `<button type="button" class="mini" data-post="${i}" data-good="${g}" data-act="buy" data-qty="10">買10</button>` +
+      `<div class="tp-good"><span class="tp-name">${t('good.' + g)}</span>` +
+      `<span class="tp-price">${t('trade.sell')} ${sellPrice(p, g)}</span>` +
+      `<button type="button" class="mini" data-post="${i}" data-good="${g}" data-act="sell" data-qty="1">${t('trade.sellN', { n: 1 })}</button>` +
+      `<button type="button" class="mini" data-post="${i}" data-good="${g}" data-act="sell" data-qty="10">${t('trade.sellN', { n: 10 })}</button>` +
+      `<span class="tp-price">${t('trade.buy')} ${buyPrice(p, g)}</span>` +
+      `<button type="button" class="mini" data-post="${i}" data-good="${g}" data-act="buy" data-qty="1">${t('trade.buyN', { n: 1 })}</button>` +
+      `<button type="button" class="mini" data-post="${i}" data-good="${g}" data-act="buy" data-qty="10">${t('trade.buyN', { n: 10 })}</button>` +
       `</div>`).join('');
-    return `<div class="trade-post"><div class="tp-head">${EDGE_LABEL[p.edge] || p.edge} 交易所</div>${goods}</div>`;
+    return `<div class="trade-post"><div class="tp-head">${t('edge.' + p.edge)} ${t('trade.post')}</div>${goods}</div>`;
   }).join('');
 }
 if (tradePanelEl) {
@@ -475,7 +474,7 @@ function clickBuild(ev) {
 let buildFailTimer = null;
 function flashBuildFail() {
   if (!buildHintEl) return;
-  buildHintEl.textContent = '建てられません（地面が空いていない／木1石1が不足）';
+  buildHintEl.textContent = t('build.fail');
   buildHintEl.classList.add('warn');
   clearTimeout(buildFailTimer);
   buildFailTimer = setTimeout(() => {
@@ -484,22 +483,20 @@ function flashBuildFail() {
   }, 2200);
 }
 function buildHintIdle() {
-  const names = { warehouse: '倉庫', loggingCamp: '伐採所', stoneCutter: '石切り所' };
-  if (!buildTool) return 'Build: なし（クリックで検査）';
-  return `Build: ${names[buildTool]} を チーム${String.fromCharCode(65 + activeTeam)} で建築（木1石1）`;
+  if (!buildTool) return t('build.inspect');
+  return t('build.do', { name: t('build.' + buildTool), team: teamLetter(activeTeam) });
 }
 
 function describeTile(tile) {
   if (tile.building) {
-    const names = { warehouse: '倉庫', loggingCamp: '伐採所', stoneCutter: '石切り所' };
-    return `${names[tile.building.kind]} 木${tile.building.wood}/石${tile.building.stone}`;
+    return `${t('build.' + tile.building.kind)} ${t('good.wood')}${tile.building.wood}/${t('good.stone')}${tile.building.stone}`;
   }
   if (tile.feature) {
-    return tile.feature.kind === 'forest'
-      ? `森 木${tile.feature.stock}/${tile.feature.max}`
-      : `石山 石${tile.feature.stock}/${tile.feature.max}`;
+    const f = tile.feature;
+    const good = f.kind === 'forest' ? t('good.wood') : t('good.stone');
+    return `${t('feat.' + f.kind)} ${good}${f.stock}/${f.max}`;
   }
-  if (tile.item) return tile.item.type === 'wood' ? '木' : tile.item.type === 'stone' ? '石' : '荷物';
+  if (tile.item) return t('good.' + (tile.item.type === 'wood' || tile.item.type === 'stone' ? tile.item.type : 'package'));
   return tile.type === TileType.WATER ? t('legend.water') : t('legend.richSoil');
 }
 

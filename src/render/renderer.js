@@ -9,6 +9,7 @@
 
 import { TileType } from '../map/tile.js';
 import { BASE_ELEV, TEAM_COLORS } from '../config.js';
+import { getLang } from '../i18n.js';
 import {
   worldToScreen,
   screenToWorld,
@@ -301,7 +302,8 @@ export class Renderer {
     ctx.font = `bold ${Math.max(8, Math.round(ts * 0.5))}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(sell ? '換' : '買', cx, cy - h * 0.30);
+    const ja = getLang() === 'ja';
+    ctx.fillText(sell ? (ja ? '換' : 'S') : (ja ? '買' : 'B'), cx, cy - h * 0.30);
   }
 
   _drawItem(ctx, cx, cy, ts, item) {
