@@ -1,0 +1,1804 @@
+:root {
+  --bg: #14181f;
+  --panel: #1e2530;
+  --panel-2: #28313f;
+  --text: #e6e9ef;
+  --muted: #93a0b4;
+  --accent: #5fae6b;
+  --border: #333d4d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+#app {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 12px 12px 28px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.app-header .version {
+  font-size: 0.78rem;
+  color: #11240f;
+  background: var(--accent);
+  padding: 2px 8px;
+  border-radius: 10px;
+  vertical-align: middle;
+}
+
+.tagline {
+  margin: 2px 0 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.tagline a {
+  color: var(--accent);
+}
+
+.layout {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.canvas-panel {
+  flex: 1 1 420px;
+}
+
+.canvas-wrap {
+  position: relative;
+  line-height: 0;
+}
+
+#map {
+  width: 100%;
+  height: auto;
+  background: #0d1014;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: block;
+  touch-action: none;
+}
+
+/* Transient hint popup shown below the canvas on tool/season changes. */
+.toast {
+  margin: 10px 0 0;
+  background: rgba(12, 15, 20, 0.94);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.toast.show {
+  opacity: 1;
+}
+
+/* Error toast — a failed order, with the blocking condition explained. */
+.toast.error {
+  border-color: #d2603a;
+  background: rgba(40, 16, 12, 0.95);
+  color: #f4c9bb;
+}
+
+/* A tool/crop option that is currently unavailable (e.g. crop out of seed). */
+.tools button.disabled-opt {
+  opacity: 0.42;
+  filter: grayscale(0.7);
+}
+
+/* Tips panel — one random tip with a coloured category tag. */
+.tip-box {
+  margin: 4px 0 8px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.tip-cat {
+  display: inline-block;
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: #11240f;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-right: 6px;
+}
+
+.tip-cat-spec {
+  background: #6fae6b;
+}
+.tip-cat-genetics {
+  background: #7fb0d8;
+}
+.tip-cat-plant {
+  background: #d8b25a;
+}
+.tip-cat-process {
+  background: #b48a64;
+}
+
+.tip-next {
+  width: 100%;
+}
+
+/* On-screen scroll arrows, overlaid on the canvas edges. */
+.scroll-btn {
+  position: absolute;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(20, 24, 31, 0.78);
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.scroll-btn:hover {
+  border-color: var(--accent);
+  background: rgba(20, 24, 31, 0.94);
+}
+
+.scroll-up {
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.scroll-down {
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.scroll-left {
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.scroll-right {
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.controls {
+  flex: 1 1 240px;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.control-group {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+}
+
+.control-group > label,
+.control-group > .label {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0;
+}
+
+/* Collapsible panels: the summary is the clickable header. */
+summary.label {
+  cursor: pointer;
+  margin-bottom: 0;
+  list-style: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+summary.label::-webkit-details-marker {
+  display: none;
+}
+
+summary.label::before {
+  content: '▶';
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 0.82em;
+  color: var(--accent);
+  transition: transform 0.12s ease;
+}
+
+details[open] > summary.label {
+  margin-bottom: 6px;
+}
+
+details[open] > summary.label::before {
+  transform: rotate(90deg);
+}
+
+.row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+input[type='text'] {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 7px 8px;
+  font: inherit;
+}
+
+input[type='text']:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 7px;
+  font: inherit;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button.primary {
+  width: 100%;
+  background: var(--accent);
+  color: #11240f;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+button.primary:hover {
+  filter: brightness(1.08);
+}
+
+#center-colonist {
+  width: 100%;
+  margin-top: 7px;
+}
+
+#clear-tasks {
+  width: 100%;
+}
+
+.view-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.view-modes button.active {
+  background: var(--accent);
+  color: #11240f;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 5px;
+}
+
+.tools.speed5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+/* C4/C5: speed (5) and zoom (5) button rows must each fit on a single
+   line. Force a 5-column grid, shrink the padding/font, and never wrap
+   a label inside its button. */
+.tools.speed5 button,
+#zooms button {
+  padding: 5px 1px;
+  font-size: 0.74rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#zooms {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.tools button.active {
+  background: var(--accent);
+  color: #11240f;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.reason-label {
+  margin: 7px 0 3px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.reason {
+  margin: 0 0 7px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+/* Collapsible sub-section inside a control-group (alpha 19). */
+.sub-group {
+  margin: 4px 0 8px;
+  padding: 4px 6px;
+  border: 1px solid #2a3f2b;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.sub-group > .sub-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  letter-spacing: 0.04em;
+  list-style: none;
+}
+/* D2: give sub-groups the same ▶ expand affordance as the main panels. */
+.sub-group > .sub-label::-webkit-details-marker { display: none; }
+.sub-group > .sub-label::before {
+  content: '▶';
+  display: inline-block;
+  margin-right: 5px;
+  font-size: 0.72em;
+  color: var(--accent);
+  transition: transform 0.12s ease;
+}
+.sub-group[open] > .sub-label {
+  margin-bottom: 4px;
+  color: var(--text);
+}
+.sub-group[open] > .sub-label::before { transform: rotate(90deg); }
+/* Mini icon prefix on a stat row label. */
+.stat-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7em;
+  margin-right: 0.35em;
+  text-align: center;
+  vertical-align: -0.3em;
+  color: var(--accent);
+}
+
+/* Condition icon next to a colonist's name (alpha 21). */
+.cond-ico {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.25em;
+  cursor: help;
+}
+
+/* α29 (D7): inline custom line-art mini-icons. Monochrome (currentColor)
+   so they read as a UI icon set, not colour emoji. ~1.5× the original
+   size for legibility. */
+.mi {
+  width: 1.5em;
+  height: 1.5em;
+  display: inline-block;
+  vertical-align: -0.32em;
+  flex: 0 0 auto;
+}
+.log-ico {
+  display: inline-flex;
+  align-items: center;
+  width: 1.7em;
+  justify-content: center;
+}
+.log-ico .mi { width: 1.5em; height: 1.5em; vertical-align: -0.32em; }
+.cond-ico .mi { width: 1.35em; height: 1.35em; }
+
+/* Start screen overlay (alpha 25). T1 (α27 followup): switched the
+   container from flex-center to plain block + scroll so a tall card
+   (8 colony groups, lots of seed slots) can scroll all the way to the
+   top. Flex centring traps the overflow above the viewport — auto
+   margins on the card scroll naturally instead. */
+.start-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(11, 24, 16, 0.92);
+  overflow: auto;
+  padding: 24px 0;
+}
+.start-screen[hidden] { display: none !important; }
+.start-card {
+  max-width: 720px;
+  width: calc(100% - 48px);
+  margin: 0 auto;
+  background: #1b2a1f;
+  border: 1px solid #2a3f2b;
+  border-radius: 8px;
+  padding: 20px 26px;
+  color: var(--text);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+.start-card h2 { margin: 0 0 6px; font-size: 1.3rem; }
+.start-hint { margin: 0 0 18px; color: var(--muted); font-size: 0.9rem; }
+.start-row {
+  margin: 0 0 14px;
+}
+.start-row-label {
+  display: block;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+.start-group-list { margin: 6px 0 0; }
+.start-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 18px 0 0;
+}
+.start-actions .primary { padding: 8px 22px; font-size: 1rem; }
+
+/* Per-group expanded row (alpha 25) — seed slots laid out below the
+   short controls row. */
+.group-seed-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 4px;
+  font-size: 0.72rem;
+}
+.group-seed-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border: 1px solid #2a3f2b;
+  border-radius: 3px;
+}
+.group-seed-slot select,
+.group-seed-slot input[type='number'] {
+  font-size: 0.72rem;
+  padding: 1px 3px;
+}
+.group-seed-slot input[type='number'] { width: 3.2em; }
+
+/* Group tab switcher in side panels (alpha 25). */
+.group-tabs {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  margin: 0 0 6px;
+}
+.group-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid #2a3f2b;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 0.72rem;
+  cursor: pointer;
+  color: var(--text);
+}
+.group-tab.active {
+  background: var(--accent);
+  color: #11240f;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.group-tab .group-chip { width: 9px; height: 9px; }
+
+/* F5/F6: per-group sections (codex + colonists panels). Each section
+   has a chip + group name header and a body of codex/colonist rows. */
+.group-section {
+  border: 1px solid #1f2c1f;
+  border-radius: 4px;
+  margin: 0 0 6px;
+  background: rgba(255, 255, 255, 0.015);
+}
+.group-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-bottom: 1px solid #1f2c1f;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.78rem;
+}
+.group-section-head .group-chip { width: 10px; height: 10px; }
+.group-section-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+.group-section-body {
+  padding: 4px 5px;
+}
+
+/* F3: mutation popup gene table — codex-style values with parent
+   reference + ▲/▼ delta. */
+.mut-lead { margin: 0 0 8px; font-size: 0.86rem; line-height: 1.5; }
+.mut-rank { margin: 0 0 10px; font-size: 0.84rem; }
+.mut-genes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 0 10px;
+  font-size: 0.74rem;
+}
+.mut-gene-row {
+  display: grid;
+  grid-template-columns: 1fr 90px 90px;
+  gap: 6px;
+  align-items: center;
+}
+.mut-gene-name { color: var(--muted); text-align: left; }
+.mut-gene-bar {
+  position: relative;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.mut-gene-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.mut-gene-bar u {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 12px;
+  background: #e8c873;
+  text-decoration: none;
+}
+.mut-gene-delta { font-variant-numeric: tabular-nums; text-align: right; }
+.mut-gene-delta em { color: var(--muted); font-style: normal; font-size: 0.95em; }
+.mut-preview {
+  display: block;
+  margin: 4px auto 0;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+/* α26 polish: enriched mutation popup — side-by-side parent/child
+   previews, top-changes callout, and a sparkle accent. The whole detail
+   lives inside .mut-wrap so the popup's max-width can be widened just
+   for this variant, leaving other popups untouched. */
+.gameover-box:has(.mut-wrap) {
+  max-width: 360px;
+  text-align: left;
+}
+.mut-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mut-lead {
+  text-align: center;
+  font-size: 0.92rem;
+  margin: 4px 0 2px;
+  line-height: 1.4;
+  color: #f3e5b3;
+}
+.mut-sparkle {
+  display: block;
+  margin: 0 auto 6px;
+  width: 220px; height: 4px;
+  background: linear-gradient(90deg, transparent, #ffd96b 30%, #fff5c0 50%, #ffd96b 70%, transparent);
+  opacity: 0.9;
+  filter: blur(1px);
+  animation: mut-sparkle-pulse 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes mut-sparkle-pulse {
+  0%, 100% { opacity: 0.45; transform: scaleX(0.85); }
+  50%      { opacity: 1;    transform: scaleX(1.05); }
+}
+.mut-meta {
+  margin: -4px 0 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.mut-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(255, 215, 110, 0.16);
+  color: #ffd96b;
+  border: 1px solid rgba(255, 215, 110, 0.4);
+}
+.mut-when { color: var(--muted); }
+.mut-previews {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 6px 0 8px;
+}
+.mut-figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.mut-figure figcaption { white-space: nowrap; }
+.mut-preview-child {
+  box-shadow: 0 0 18px 2px rgba(255, 215, 110, 0.5);
+}
+.mut-vs {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+}
+.mut-stars-old { color: var(--muted); }
+.mut-stars-new { color: #ffd96b; text-shadow: 0 0 6px rgba(255, 215, 110, 0.5); }
+.mut-arrow { color: var(--muted); margin: 0 4px; }
+.mut-top {
+  margin: 0 0 10px;
+  padding: 6px 8px;
+  background: rgba(255, 215, 110, 0.08);
+  border-left: 2px solid #ffd96b;
+  border-radius: 3px;
+}
+.mut-section-head {
+  font-size: 0.74rem;
+  margin-bottom: 4px;
+  color: #ffd96b;
+}
+.mut-top-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.76rem;
+  padding: 1px 0;
+  font-variant-numeric: tabular-nums;
+}
+.mut-top-row.mut-up   .mut-top-delta { color: #8bd17a; }
+.mut-top-row.mut-down .mut-top-delta { color: #d97a7a; }
+.mut-top-name { color: var(--muted); }
+.mut-all summary {
+  cursor: pointer;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.mut-all summary:hover { color: var(--accent); }
+
+/* α28-P2: codex "pedigree" link + the full-screen tree overlay. */
+.codex-pedigree {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.codex-pedigree.disabled {
+  color: var(--muted);
+  text-decoration: none;
+  cursor: default;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.pedigree-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(8, 14, 10, 0.94);
+  overflow: auto;
+  padding: 24px;
+}
+.pedigree-overlay[hidden] { display: none !important; }
+.pedigree-card {
+  max-width: 1100px;
+  margin: 0 auto;
+  background: #1b2a1f;
+  border: 1px solid #2a3f2b;
+  border-radius: 8px;
+  padding: 18px 22px;
+  color: var(--text);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+.pedigree-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 14px;
+}
+.pedigree-head h2 { margin: 0; font-size: 1.1rem; flex: 1 1 auto; min-width: 0; }
+/* A1: the Close button inherits .primary which sets width:100% — that
+   stretched it across the whole header and squashed the title. Pin it
+   to its content width. */
+.pedigree-head .primary {
+  flex: 0 0 auto;
+  width: auto;
+  align-self: flex-start;
+}
+.pedigree-body { display: flex; flex-direction: column; gap: 0; align-items: center; }
+/* A1: per-generation card laid out as a small descent tree —
+   parents row → merge connector → child. */
+.pedigree-gen {
+  width: 100%;
+  max-width: 720px;
+  padding: 12px 16px 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: 6px;
+  border: 1px solid #243025;
+}
+.pedigree-gen-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  color: #cdd7c1;
+  margin: 0 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #2c3a2c;
+}
+.ped-gen-q {
+  margin-left: auto;
+  font-size: 0.74rem;
+  color: #9ab85a;
+  font-variant-numeric: tabular-nums;
+}
+.ped-gen-q + .ped-legendary,
+.ped-legendary { margin-left: 0; }
+/* parents sit side by side; the × sits between them. */
+.ped-parents {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+}
+.ped-parents .pedigree-cell { width: 280px; }
+.ped-cross {
+  align-self: center;
+  font-size: 1.25rem;
+  color: #8aa07e;
+  padding: 0 12px;
+  margin-top: 18px;
+}
+/* merge connector: an inverted-T linking the two parents down to the
+   child centred below. */
+.ped-merge {
+  position: relative;
+  height: 24px;
+  margin: 0 auto;
+}
+.ped-merge::before {
+  /* horizontal bar spanning the two parent centres */
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 25%;
+  right: 25%;
+  border-top: 2px solid #3f6042;
+}
+.ped-merge::after {
+  /* vertical drop from the bar's centre to the child */
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-1px);
+  border-left: 2px solid #3f6042;
+}
+.ped-child-row { display: flex; justify-content: center; }
+.ped-child-row .pedigree-cell { width: 300px; }
+/* descent arrow between generations */
+.ped-descend {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 6px 0;
+  color: #8aa07e;
+}
+.ped-arrow { font-size: 1.5rem; line-height: 1; color: #5e8a52; }
+.ped-descend-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: #93a886;
+}
+.ped-legendary {
+  font-size: 0.72rem;
+  color: #f0d260;
+  background: rgba(160, 120, 30, 0.18);
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid #6a5320;
+}
+.pedigree-cell {
+  text-align: center;
+  cursor: help;
+  padding: 6px 8px;
+  border-radius: 4px;
+  min-width: 0;
+}
+.pedigree-cell:hover { background: rgba(255, 255, 255, 0.04); }
+.pedigree-cell-child {
+  background: rgba(120, 180, 130, 0.09);
+  border: 1px solid #38543b;
+}
+.pedigree-cell .label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #aeb9a4;
+  margin: 0 0 4px;
+}
+.pedigree-cell-child .label { color: #bfe0b0; font-weight: 600; }
+.pedigree-cell canvas {
+  display: block;
+  margin: 0 auto;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 3px;
+}
+.pedigree-cell .rank {
+  font-size: 0.82rem;
+  margin: 4px 0 6px;
+  color: #d8c98a;
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 6px;
+}
+.pedigree-cell .ped-q {
+  font-size: 0.72rem;
+  color: #c0cab4;
+  font-variant-numeric: tabular-nums;
+}
+/* AA4: per-gene mini bars per cell so the differences between parents
+   and child are visible at a glance. Full numeric detail is in the
+   cell `title` attribute. */
+.ped-genes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 8px auto 0;
+  max-width: 230px;
+  text-align: left;
+}
+.ped-gene {
+  display: grid;
+  grid-template-columns: 74px 1fr 34px;
+  align-items: center;
+  gap: 6px;
+  /* A1: without an explicit row height the track collapses to the 8px
+     bar, leaving the text spans 0-height; the name's overflow:hidden
+     then clipped it away entirely. Pin a line-height + min-height so
+     the label and % render. */
+  min-height: 16px;
+  line-height: 1.4;
+  font-size: 0.7rem;
+  color: #c4cebd;
+}
+.ped-gene-name,
+.ped-gene-pct { align-self: center; }
+.ped-gene-name {
+  color: #b3bfa6;
+  white-space: nowrap;
+  overflow: visible;
+}
+.ped-gene-bar {
+  position: relative;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid #2c3a2c;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.ped-gene-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #6b9b5a, #b4d27a);
+  border-radius: 2px;
+}
+.ped-gene-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #c0cab4;
+}
+.pedigree-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 24px;
+}
+/* D4: note shown under a single current-strain node when a crop has not
+   bred a new record yet. */
+.pedigree-note {
+  max-width: 640px;
+  margin: 12px auto 0;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+/* D3: per-group autonomy-script row in the Colony panel. */
+.group-script-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin: 4px 0 6px;
+}
+.gscript {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.gscript .group-chip { width: 10px; height: 10px; }
+.gscript-letter { font-weight: 600; color: var(--text); }
+.gscript-sel {
+  font-size: 0.74rem;
+  padding: 1px 3px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  max-width: 11em;
+}
+/* C6 / α30 followup: origin banner shown at the top of every pedigree
+   view. The wild case keeps the prominent green styling; other origin
+   types get colour variants that signal at a glance how this crop
+   entered the colony. */
+.pedigree-wild-banner, .pedigree-origin-banner {
+  margin: 0 auto 14px;
+  max-width: 720px;
+  text-align: center;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #cde6b0;
+  background: linear-gradient(90deg, rgba(70,120,60,0.18), rgba(120,170,80,0.30), rgba(70,120,60,0.18));
+  border: 1px solid #4d7a3f;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.pedigree-origin-starter {
+  background: linear-gradient(90deg, rgba(110,120,80,0.18), rgba(180,180,120,0.28), rgba(110,120,80,0.18));
+  border-color: #807a3f;
+  color: #ede6a0;
+}
+.pedigree-origin-trader {
+  background: linear-gradient(90deg, rgba(80,110,140,0.20), rgba(120,170,210,0.32), rgba(80,110,140,0.20));
+  border-color: #4a7090;
+  color: #cdd6f0;
+}
+.pedigree-origin-other {
+  background: linear-gradient(90deg, rgba(100,90,110,0.18), rgba(150,140,180,0.28), rgba(100,90,110,0.18));
+  border-color: #6a5d80;
+  color: #d0c8e0;
+}
+
+/* α30 followup: per-gene inheritance lessons under each lineage entry.
+   First attempt used `display: grid` on the outer container without an
+   explicit `grid-template-rows` declaration — all four `.ped-lesson`
+   children collapsed onto the same row, overlapping each other. Fix:
+   use a flex column layout so each lesson row stacks vertically. The
+   per-lesson row keeps its 3-column grid for `gene | math | tag` so the
+   columns stay aligned across rows. */
+.ped-lessons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px auto 0;
+  max-width: 680px;
+  font-size: 0.82rem;
+  padding: 6px 10px;
+  background: rgba(40, 48, 36, 0.5);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.ped-lesson {
+  display: grid;
+  grid-template-columns: 6em 9em 1fr;
+  gap: 10px;
+  align-items: baseline;
+  line-height: 1.5;
+}
+.ped-lesson > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ped-lesson-tag { white-space: normal; }
+.ped-lesson-gene { font-weight: 600; color: #cde6b0; }
+.ped-lesson-math { font-family: monospace; color: #b8c8a8; font-size: 0.82rem; }
+.ped-lesson-tag { color: #d8d8d8; }
+.ped-lesson-mutationUp   { color: #f0c060; }
+.ped-lesson-mutationDown { color: #d27068; }
+.ped-lesson-dominant     { color: #aec890; }
+.ped-lesson-recessive    { color: #99a87f; }
+.ped-lesson-blended      { color: #b0b0a0; }
+
+/* T5: small toggle row that flips a panel between "current numbers"
+   and "stats graph" views. Sits between the disclosure summary and the
+   panel body. */
+.panel-mode-row {
+  display: inline-flex;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+.panel-mode-btn {
+  padding: 1px 8px;
+  font-size: 0.7rem;
+  border: 1px solid #2a3f2b;
+  background: rgba(255,255,255,0.02);
+  border-radius: 3px;
+  color: var(--text);
+  cursor: pointer;
+}
+.panel-mode-btn.active {
+  background: var(--accent);
+  color: #11240f;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+/* AA7: detail / simple toggle sits to the right of the "Activity log"
+   label, keeping the panel header on a single tight row. */
+.log-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0 2px;
+}
+.log-head-row .reason-label { margin: 0; }
+.log-mode-row { margin: 0; }
+.panel-graph {
+  margin: 4px 0 0;
+}
+.panel-graph svg {
+  display: block;
+  width: 100%;
+  height: 60px;
+  background: rgba(0,0,0,0.25);
+  border-radius: 3px;
+}
+.panel-graph .graph-caption {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin: 3px 2px 0;
+}
+
+/* Activity log: 4 visible rows by default (Q1). The full history is
+   still kept (TASK_LOG_SIZE entries) — scroll inside.
+   This rule is overridden further down by the canonical .task-log
+   block; both kept aligned at the same 4-row height. */
+.task-log {
+  max-height: 84px;
+}
+
+/* Group setup widgets (alpha 23). */
+.group-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  margin: 4px 0 6px;
+}
+.group-slider input[type='range'] { flex: 1; }
+.group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 8px;
+}
+.group-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  padding: 3px 5px;
+  border: 1px solid #2a3f2b;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+}
+/* C2: seed slots always drop to their own line under the controls. */
+.group-row .group-seed-row { flex-basis: 100%; }
+/* C2: copy-Colony-A button (legacy). */
+.group-copy-a {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border: 1px solid #3f6042;
+  border-radius: 4px;
+  background: rgba(120, 170, 80, 0.16);
+  color: #cde6b0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.group-copy-a:hover { background: rgba(120, 170, 80, 0.30); }
+/* α30 followup: drag-drop copy zones replace the single "Copy A" button. */
+.group-copy-zones { display: inline-flex; gap: 4px; align-items: center; }
+.group-copy-src, .group-copy-dst {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border: 1px dashed #3f6042;
+  border-radius: 4px;
+  color: #cde6b0;
+  white-space: nowrap;
+  user-select: none;
+}
+.group-copy-src {
+  background: rgba(120, 170, 80, 0.16);
+  cursor: grab;
+}
+.group-copy-src:hover { background: rgba(120, 170, 80, 0.30); }
+.group-copy-src:active { cursor: grabbing; }
+.group-copy-dst {
+  background: rgba(80, 110, 60, 0.12);
+  color: #98b07a;
+}
+.group-copy-dst.over {
+  background: rgba(180, 220, 120, 0.30);
+  border-style: solid;
+  color: #f0ffd0;
+}
+.group-row.dragging-src { opacity: 0.75; }
+.group-chip {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+}
+.group-row select,
+.group-row input[type='number'] {
+  font-size: 0.78rem;
+  padding: 1px 3px;
+}
+.group-row input[type='number'] { width: 3em; }
+.group-colcount { display: inline-flex; gap: 4px; align-items: center; }
+
+.task-log {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  /* Q1: show roughly 4 rows by default; older entries scroll into view.
+     History capacity is still TASK_LOG_SIZE (1000) entries — only the
+     visible window shrank. ~17.7 px per row + 4 px gap, so 4 rows fit
+     in ~84 px. */
+  max-height: 84px;
+  overflow-y: auto;
+}
+
+.task-log li {
+  word-break: break-word;
+}
+
+.task-log .log-ok {
+  color: #79c98a;
+}
+
+.task-log .log-fail {
+  color: #d98a8a;
+}
+
+.task-log .log-meal {
+  color: #d8c98a;
+}
+
+.task-log .log-warn {
+  color: #e0a766;
+}
+
+/* Seed stock: each crop's seeds grouped by quality rank (★). */
+.seed-stock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 2px;
+}
+
+.seed-row {
+  display: flex;
+  gap: 8px;
+  font-size: 0.78rem;
+  align-items: baseline;
+}
+
+.seed-crop {
+  color: var(--muted);
+  flex: 0 0 auto;
+  min-width: 52px;
+}
+
+.seed-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.seed-chip {
+  color: #e8c65a;
+  letter-spacing: -1px;
+  white-space: nowrap;
+}
+
+.seed-chip b {
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: 0;
+  margin-left: 1px;
+}
+
+.seed-none {
+  color: var(--muted);
+}
+
+/* Variety codex: the best bred variety of each crop, gene by gene. */
+.codex {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.codex-legend {
+  margin: 0;
+  font-size: 0.66rem;
+  color: var(--muted);
+}
+
+.codex-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.codex-preview {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  background: #11161d;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.codex-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.codex-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+}
+
+.codex-rank {
+  color: #e8c65a;
+  letter-spacing: -1px;
+}
+
+/* α29 followup: edible-raw / cook-only chip on each codex row. Sits
+   right after the crop name; the existing .codex-pedigree {margin-left:
+   auto} keeps the pedigree link pinned to the right edge. */
+.codex-raw {
+  display: inline-block;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  cursor: help;
+  line-height: 1.4;
+  margin-left: 6px;
+}
+.codex-raw.raw-ok   { color: #8ad07a; background: rgba(80, 160, 80, 0.08); }
+.codex-raw.raw-cook { color: #e8a866; background: rgba(180, 110, 40, 0.10); }
+/* α30 followup: per-group "seeds N / stock N" chip sits between the
+   crop name and the edible-raw badge so the player can see at a glance
+   how much of that variety this colony actually holds. */
+.codex-count {
+  display: inline-block;
+  font-size: 0.68rem;
+  letter-spacing: 0.01em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  cursor: help;
+  line-height: 1.4;
+  margin-left: 6px;
+}
+/* keep the rank + pedigree link tight against the right edge */
+.codex-head { gap: 4px; align-items: center; }
+
+.codex-genes {
+  display: flex;
+  gap: 4px;
+}
+
+.gene-cell {
+  position: relative;
+  flex: 1;
+  height: 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.gene-cell i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #4f8f5a, #79c98a);
+}
+
+.gene-cell u {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+/* Two stats per row to pack more information onto one screen. */
+.stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 12px;
+}
+
+/* Season panel (α26): pack 5 readings into 3 columns so the box
+ * collapses from ~4 rows to 2. Same look, less vertical real estate. */
+.stats-2col {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.stats > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.76rem;
+  min-width: 0;
+}
+
+.stats dt {
+  color: var(--muted);
+  margin: 0;
+  min-width: 0;
+}
+
+.stats dd {
+  margin: 0;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.84rem;
+}
+
+.swatch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.swatch i {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(12, 15, 20, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  white-space: normal;
+  max-width: 240px;
+  z-index: 5;
+}
+
+/* Colonists panel: each worker shows state and three survival bars. */
+.colonists {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.colonist-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+}
+
+.colonist-row:hover {
+  background: var(--panel-2);
+}
+
+.colonist-row.selected {
+  border-color: #7fd4ff;
+  background: rgba(127, 212, 255, 0.12);
+}
+
+.crow-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.86rem;
+}
+
+.crow-head .cstate {
+  color: var(--muted);
+}
+
+.crow-bars {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.cbar {
+  flex: 1;
+  height: 7px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.cbar b {
+  display: block;
+  height: 100%;
+}
+
+.cbar b.good {
+  background: #5fc46f;
+}
+.cbar b.mid {
+  background: #e8b23c;
+}
+.cbar b.low {
+  background: #d2493a;
+}
+
+/* α30 followup: nutrient pie chart sits inline with the 3 stat bars
+   (see the consolidated rule below). The old bar-row variant is gone;
+   only per-nutrient tint colours and the malnutrition icon remain. */
+.crow-nutrients .cbar {
+  height: 5px;
+}
+.cbar.nut-carb b.good    { background: #e6b85a; }
+.cbar.nut-protein b.good { background: #d2706f; }
+.cbar.nut-fat b.good     { background: #c8a25a; }
+.cbar.nut-vitamin b.good { background: #6fb24a; }
+/* α30 followup: 4-nutrient rose chart shared by colonists + codex/pedigree. */
+.nutrient-pie {
+  display: inline-block;
+  vertical-align: middle;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.4));
+}
+.crow-nutrients {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  flex: 0 0 auto;
+}
+.ped-nutrients {
+  display: flex;
+  justify-content: center;
+  margin-top: 6px;
+}
+.cond-ico.cond-mal-1 { color: #e6b85a; }
+.cond-ico.cond-mal-2 { color: #e89a3a; }
+.cond-ico.cond-mal-3 { color: #d2493a; }
+.cond-ico.cond-mal-4 { color: #8a2828; }
+
+/* Legacy 4-chip layout — kept for back-compat, but the new
+   `.nutrient-pie` SVG inside `.ped-nutrients` is the active rendering. */
+.ped-nut {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  text-align: center;
+}
+.ped-nut.nut-carb    { color: #e6b85a; }
+.ped-nut.nut-protein { color: #d2706f; }
+.ped-nut.nut-fat     { color: #c8a25a; }
+.ped-nut.nut-vitamin { color: #6fb24a; }
+
+/* Game-over overlay, shown over the canvas when the colony is lost. */
+.gameover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 14, 0.8);
+  border-radius: 6px;
+  z-index: 6;
+}
+
+.gameover[hidden] {
+  display: none;
+}
+
+.gameover-box {
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 22px 26px;
+  text-align: center;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.gameover-box h2 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+}
+
+.gameover-box p {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.gameover-box .primary {
+  width: auto;
+  padding: 8px 20px;
+}
+
+/* Pause control and its on-canvas indicator. */
+.pause-btn {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.pause-btn.paused {
+  background: #d8a23c;
+  color: #11240f;
+  border-color: #d8a23c;
+  font-weight: 600;
+}
+
+.paused-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(12, 15, 20, 0.9);
+  border: 1px solid #d8a23c;
+  color: #f0d29a;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.74rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  z-index: 5;
+}
+
+.paused-badge[hidden] {
+  display: none;
+}
+
+/* α32 welcome banner shown above the canvas until dismissed. Lives in
+   the main layout so it doesn't disturb the canvas / side panels. */
+.alpha-welcome-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 10px 14px;
+  background: linear-gradient(90deg, rgba(95,174,107,0.12), rgba(216,178,90,0.12));
+  border: 1px solid rgba(95,174,107,0.45);
+  border-radius: 6px;
+  color: #d6e3d4;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+.alpha-welcome-banner[hidden] { display: none; }
+.alpha-welcome-banner .awb-icon { font-size: 1.1rem; flex: 0 0 auto; }
+.alpha-welcome-banner .awb-text { flex: 1 1 auto; }
+.alpha-welcome-banner .awb-close {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid rgba(214,227,212,0.4);
+  border-radius: 4px;
+  color: inherit;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0;
+}
+.alpha-welcome-banner .awb-close:hover {
+  background: rgba(214,227,212,0.15);
+  border-color: rgba(214,227,212,0.7);
+}
+
+/* "All colonists" work-order target toggle. */
+.target-all {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.target-all.active {
+  background: var(--accent);
+  color: #11240f;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Auto-hunt toggle button (and similar on/off toggles). */
+.toggle-btn {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.toggle-btn.on {
+  background: var(--accent);
+  color: #11240f;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Victory screen: a year-one results summary and two actions. */
+#victory-summary {
+  margin: 4px 0 14px;
+  text-align: left;
+}
+
+.victory-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.victory-actions .primary {
+  width: auto;
+  padding: 8px 16px;
+}
+
+/* α27 Run history sparklines. One row per metric: label / svg / value. */
+.history-graphs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.history-graphs .hist-row {
+  display: grid;
+  grid-template-columns: 84px 1fr 42px;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.history-graphs .hist-label {
+  color: var(--ink-mute, #b6b6b6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-graphs .hist-chart {
+  position: relative;
+  width: 100%;
+  line-height: 0;
+}
+.history-graphs .hist-svg {
+  width: 100%;
+  height: 56px;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 3px;
+  cursor: crosshair;
+}
+/* C8: y-axis scale labels pinned to the chart's left edge. */
+.history-graphs .hist-axis-top,
+.history-graphs .hist-axis-bot {
+  position: absolute;
+  left: 2px;
+  font-size: 9px;
+  line-height: 1;
+  color: #9fb191;
+  background: rgba(8, 14, 10, 0.55);
+  padding: 0 2px;
+  border-radius: 2px;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.history-graphs .hist-axis-top { top: 2px; }
+.history-graphs .hist-axis-bot { bottom: 2px; }
+.history-graphs .hist-svg:hover {
+  background: rgba(0, 0, 0, 0.28);
+}
+.history-graphs .hist-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink, #e6e6e6);
+}
+.history-graphs .hist-empty {
+  fill: var(--ink-mute, #b6b6b6);
+  font-size: 12px;
+  font-style: italic;
+}

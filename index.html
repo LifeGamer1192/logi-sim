@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%235f8fae'/><rect x='6' y='18' width='12' height='8' rx='1.5' fill='%2311130f'/><rect x='18' y='14' width='8' height='12' rx='1.5' fill='%2311130f'/><circle cx='10' cy='27' r='2.5' fill='%23dfe6ef'/><circle cx='22' cy='27' r='2.5' fill='%23dfe6ef'/></svg>"
+    />
+    <title>Logi Sim</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="app-header">
+        <h1>Logi Sim <span class="version" data-i18n="app.version">alpha 1</span></h1>
+        <p class="tagline">
+          <span data-i18n="app.tagline">物流ネットワークのプロトタイプ</span>
+        </p>
+      </header>
+
+      <main class="layout">
+        <section class="canvas-panel">
+          <div class="canvas-wrap">
+            <canvas id="map"></canvas>
+            <div id="tooltip" class="tooltip" hidden></div>
+            <div id="paused-badge" class="paused-badge" hidden>
+              <span data-i18n="note.paused">Paused</span>
+            </div>
+            <button class="scroll-btn scroll-up" data-dir="up" type="button" aria-label="Scroll up">▲</button>
+            <button class="scroll-btn scroll-down" data-dir="down" type="button" aria-label="Scroll down">▼</button>
+            <button class="scroll-btn scroll-left" data-dir="left" type="button" aria-label="Scroll left">◀</button>
+            <button class="scroll-btn scroll-right" data-dir="right" type="button" aria-label="Scroll right">▶</button>
+          </div>
+        </section>
+
+        <aside class="controls">
+          <details class="control-group" open>
+            <summary class="label" data-i18n="panel.season">Season</summary>
+            <dl id="env-stats" class="stats stats-2col"></dl>
+          </details>
+
+          <details class="control-group" open>
+            <summary class="label" data-i18n="panel.speedZoom">Speed &amp; zoom</summary>
+            <p class="reason-label" data-i18n="label.gameSpeed">Game speed</p>
+            <div class="tools speed5" id="speeds">
+              <button type="button" data-speed="0">0.5×</button>
+              <button type="button" data-speed="1" class="active">1×</button>
+              <button type="button" data-speed="2">2×</button>
+              <button type="button" data-speed="3">4×</button>
+              <button type="button" data-speed="4">8×</button>
+            </div>
+            <button id="pause-btn" type="button" class="pause-btn">Pause</button>
+            <p class="reason-label" data-i18n="label.mapZoom">Map zoom</p>
+            <div class="tools" id="zooms">
+              <button type="button" data-zoom="0" data-i18n="zoom.xxs">XXS</button>
+              <button type="button" data-zoom="1" data-i18n="zoom.xs">XS</button>
+              <button type="button" data-zoom="2" data-i18n="zoom.small">Small</button>
+              <button type="button" data-zoom="3" data-i18n="zoom.medium" class="active">Medium</button>
+              <button type="button" data-zoom="4" data-i18n="zoom.large">Large</button>
+            </div>
+          </details>
+
+          <details class="control-group" open>
+            <summary class="label" data-i18n="panel.viewLegend">View &amp; legend</summary>
+            <div class="view-modes" id="view-modes">
+              <button type="button" data-mode="terrain" data-i18n="view.terrain" class="active">Terrain</button>
+              <button type="button" data-mode="fertility" data-i18n="view.fertility">Fertility</button>
+              <button type="button" data-mode="moisture" data-i18n="view.moisture">Moisture</button>
+              <button type="button" data-mode="sunlight" data-i18n="view.sunlight">Sunlight</button>
+            </div>
+            <div id="legend" class="legend"></div>
+          </details>
+
+          <details class="control-group">
+            <summary class="label" data-i18n="panel.mapStats">Map stats</summary>
+            <dl id="map-stats" class="stats"></dl>
+          </details>
+
+          <details class="control-group" open>
+            <summary class="label" data-i18n="panel.world">World</summary>
+            <p class="reason-label" data-i18n="panel.language">Language</p>
+            <div class="tools" id="langs">
+              <button type="button" data-lang="en" class="active">EN</button>
+              <button type="button" data-lang="ja">日本語</button>
+            </div>
+            <p class="reason-label" data-i18n="label.seed">Seed</p>
+            <input id="seed" type="text" inputmode="numeric" autocomplete="off" placeholder="(random)">
+            <button id="regenerate" type="button" class="primary" data-i18n="btn.regenerate">
+              Regenerate (random)
+            </button>
+          </details>
+        </aside>
+      </main>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
