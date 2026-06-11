@@ -331,22 +331,56 @@ export function generateMap(cols, rows, seed, biome = null) {
 
   // logi-sim terracing pass: quantize each tile's continuous elevation into
   // ELEV_LEVELS discrete steps so the relief renders as crisp terraces and
-  // height becomes a gameplay factor. Water becomes a flat low basin; land
-  // levels always sit above the water surface.
+  // height becomes a gameplay factor. Water becomes a flat low basin.
   const span = Math.max(1e-6, 1 - waterThreshold);
   const lastLevel = Math.max(1, ELEV_LEVELS - 1);
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
       const tile = tiles[y][x];
-      if (tile.type === TileType.WATER) {
-        tile.level = 0;
-        tile.elevation = WATER_ELEV;
-        continue;
-      }
+      if (tile.type === TileType.WATER) { tile.level = 0; continue; }
       const norm = clamp01((tile.elevation - waterThreshold) / span);
-      const level = Math.round(norm * lastLevel);
-      tile.level = level;
-      tile.elevation = LAND_BASE + (level / lastLevel) * (1 - LAND_BASE);
+      tile.level = Math.round(norm * lastLevel);
+    }
+  }
+
+  // Slope-limiting pass: cap the height change between adjacent tiles to a
+  // single step so the relief steps up/down one level at a time instead of
+  // dropping several at once (gentler terraces). We repeatedly lower any
+  // tile that sits more than one level above its LOWEST neighbour; lowering
+  // toward `minNeighbour + 1` for every tile guarantees every adjacent pair
+  // differs by at most one. Lowering only → the loop converges; the fixed
+  // point is order-independent (deterministic for a given seed). Water
+  // (level 0) participates so shorelines are gentle too.
+  let changed = true;
+  let guard = 0;
+  const guardCap = cols + rows; // monotone-decreasing → always converges well within this
+  while (changed && guard++ < guardCap) {
+    changed = false;
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const tile = tiles[y][x];
+        if (tile.type === TileType.WATER) continue; // basin stays at 0
+        let minN = Infinity;
+        if (x > 0) minN = Math.min(minN, tiles[y][x - 1].level);
+        if (x < cols - 1) minN = Math.min(minN, tiles[y][x + 1].level);
+        if (y > 0) minN = Math.min(minN, tiles[y - 1][x].level);
+        if (y < rows - 1) minN = Math.min(minN, tiles[y + 1][x].level);
+        if (minN !== Infinity && tile.level > minN + 1) {
+          tile.level = minN + 1;
+          changed = true;
+        }
+      }
+    }
+  }
+
+  // Map the final discrete level to a render elevation. Land always sits
+  // above the water surface.
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const tile = tiles[y][x];
+      tile.elevation = tile.type === TileType.WATER
+        ? WATER_ELEV
+        : LAND_BASE + (tile.level / lastLevel) * (1 - LAND_BASE);
     }
   }
 
