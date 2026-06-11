@@ -33,6 +33,10 @@ export function createTeam(id, depot, scriptId = 'hasty') {
     // Pending physical trade orders { kind, good, postIndex, qty }. Manual
     // orders go to the front; the team's trader worker fulfils them in order.
     tradeQueue: [],
+    // Pending road-construction plans { x, y, kind }. The team's builder
+    // worker hauls material to each site and constructs it over time.
+    roadQueue: [],
+    _roadTimer: 0,
   };
 }
 

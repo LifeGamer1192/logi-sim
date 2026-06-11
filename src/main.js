@@ -487,8 +487,8 @@ function clickBuild(ev) {
   const { x, y } = pointerTile(ev);
   if (x < 0 || y < 0 || x >= GRID_COLS || y >= GRID_ROWS) return;
   let ok;
-  if (buildTool === 'woodRoad') ok = game.buildRoad(activeTeam, 'wood', x, y);
-  else if (buildTool === 'stoneRoad') ok = game.buildRoad(activeTeam, 'stone', x, y);
+  if (buildTool === 'woodRoad') ok = game.planRoad(activeTeam, 'wood', x, y, true);
+  else if (buildTool === 'stoneRoad') ok = game.planRoad(activeTeam, 'stone', x, y, true);
   else ok = game.build(activeTeam, buildTool, x, y);
   if (!ok) flashBuildFail();
 }

@@ -16,6 +16,18 @@
 //     tile in the same frame.
 
 import { TileType } from '../map/tile.js';
+import { roadSpeedMultiplier } from '../roads.js';
+import { ROAD_STONE_MULT } from '../config.js';
+
+// Cheapest possible per-step cost (the fastest road). Used to keep the
+// heuristic admissible once road tiles cost less than 1 to traverse.
+const MIN_STEP_COST = 1 / ROAD_STONE_MULT;
+
+// Time to cross a tile = distance(1) / walking-speed multiplier. A road tile
+// is faster, so it costs less — A* then prefers routes along roads.
+function stepCost(tile) {
+  return 1 / roadSpeedMultiplier(tile.road);
+}
 
 function isWalkable(map, x, y, blockFences) {
   if (x < 0 || y < 0 || x >= map.cols || y >= map.rows) return false;
@@ -120,7 +132,7 @@ export function findPath(map, start, goal, blockFences = false, opts = {}) {
   const gScore = new Float64Array(total).fill(Infinity);
   const cameFrom = new Int32Array(total).fill(-1);
   const closed = new Uint8Array(total);
-  const heuristic = (x, y) => Math.abs(x - goal.x) + Math.abs(y - goal.y);
+  const heuristic = (x, y) => (Math.abs(x - goal.x) + Math.abs(y - goal.y)) * MIN_STEP_COST;
 
   const startIdx = idx(start.x, start.y);
   gScore[startIdx] = 0;
@@ -163,7 +175,7 @@ export function findPath(map, start, goal, blockFences = false, opts = {}) {
       }
       const ni = idx(nx, ny);
       if (closed[ni]) continue;
-      const tentative = gScore[ci] + 1;
+      const tentative = gScore[ci] + stepCost(map.tiles[ny][nx]);
       if (tentative < gScore[ni]) {
         gScore[ni] = tentative;
         cameFrom[ni] = ci;

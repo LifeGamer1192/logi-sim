@@ -64,6 +64,9 @@ export function createTile({ x, y, type, elevation, fertility, moisture, sunligh
     // logi-sim: a paved road on this tile speeding up walkers, or null.
     // 'wood' (2×) | 'stone' (3×). See roads.js.
     road: null,
+    // logi-sim: a planned (under-construction) road kind, or null. A worker
+    // hauls material here and builds it over time; then road = roadPlan.
+    roadPlan: null,
     // α33: water-tile subtype (ocean / river / lake). null for land tiles.
     // Set by classifyWaterBodies() during map generation.
     waterKind: null,

@@ -195,8 +195,10 @@ export const TRADE_LOAD = 20;
 export const ROAD_WOOD_MULT = 2;
 export const ROAD_STONE_MULT = 3;
 export const ROAD_COST = { wood: { wood: 1 }, stone: { stone: 1 } }; // per kind
-// A running auto-script paves at most one tile this often (sim-sec).
+// A running auto-script plans at most one road tile this often (sim-sec).
 export const ROAD_INTERVAL = 1.0;
+// Seconds a worker spends on-site constructing a road before it is laid.
+export const ROAD_BUILD_TIME = 2.5;
 
 // Camera panning speed in tiles per second while a key / arrow is held.
 export const CAMERA_SPEED = 22;

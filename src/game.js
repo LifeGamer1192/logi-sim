@@ -36,7 +36,7 @@ import { createForest, createStoneHill, harvestFeature, regenFeature, canHarvest
 import { createBuilding, isFull, deposit } from './buildings.js';
 import { createTradePost, tickTradePost, sellUnits, buyUnits, buyPrice } from './trade.js';
 import { runScript } from './scripts.js';
-import { TRADE_LOAD, ROAD_INTERVAL, ROAD_COST } from './config.js';
+import { TRADE_LOAD, ROAD_INTERVAL, ROAD_BUILD_TIME } from './config.js';
 import { roadSpeedMultiplier, roadCostGood } from './roads.js';
 
 export class Game {
@@ -183,11 +183,12 @@ export class Game {
     return this.map.tiles[y][x].type === TileType.LAND;
   }
 
-  /** Land tile with nothing on it (no item / feature / building / trade). */
+  /** Land tile with nothing on it (no item / feature / building / trade / road plan). */
   _isOpenLand(x, y) {
     if (!this._isLand(x, y)) return false;
     const t = this.map.tiles[y][x];
-    return t.item == null && t.feature == null && t.building == null && t.trade == null;
+    return t.item == null && t.feature == null && t.building == null
+      && t.trade == null && t.roadPlan == null;
   }
 
   _randomLandTile() {
@@ -315,37 +316,42 @@ export class Game {
 
   // --- roads ----------------------------------------------------------------
 
-  // A road may be laid on clear land (no feature / building / trade); an item
-  // on the tile is fine — the road is the ground under it.
+  // A road may be planned on clear land (no feature / building / trade /
+  // existing road or pending plan); an item on the tile is fine.
   _canBuildRoadAt(x, y) {
     if (!this._isLand(x, y)) return false;
     const t = this.map.tiles[y][x];
-    return t.feature == null && t.building == null && t.trade == null && t.road == null;
+    return t.feature == null && t.building == null && t.trade == null
+      && t.road == null && t.roadPlan == null;
   }
 
   /**
-   * Lay a road of `kind` ('wood' | 'stone') for a team, paying its cost from
-   * the treasury. Returns true on success.
+   * Plan a road of `kind` ('wood' | 'stone') for a team. The road is NOT laid
+   * immediately — a builder worker hauls material to the site and constructs
+   * it (see _stepRoad). Manual (priority) plans jump to the front of the
+   * queue. Returns true if the plan was accepted.
    */
-  buildRoad(teamId, kind, x, y) {
+  planRoad(teamId, kind, x, y, priority = false) {
     const team = this.teams[teamId];
     if (!team || !this._canBuildRoadAt(x, y)) return false;
-    const good = roadCostGood(kind);
-    const cost = ROAD_COST[kind]?.[good] ?? 1;
-    if ((team.stock[good] || 0) < cost) return false;
-    team.stock[good] -= cost;
-    this.map.tiles[y][x].road = kind;
+    this.map.tiles[y][x].roadPlan = kind;
+    const plan = { x, y, kind };
+    if (priority) team.roadQueue.unshift(plan);
+    else team.roadQueue.push(plan);
     return true;
   }
 
-  // A running script paves one tile per ROAD_INTERVAL along a route from the
-  // depot to a facility / nearest trade post. Hasty lays wood (cheap), long-
-  // term lays stone (faster) — matching their personalities.
+  // A running script plans one road tile per ROAD_INTERVAL along a route from
+  // the depot to a facility / nearest trade post (one in flight at a time).
+  // Hasty plans wood (cheap), long-term plans stone — matching personalities.
   _autoBuildRoads(team, simDt) {
     if (!team.scriptRunning) return;
     team._roadTimer = (team._roadTimer || 0) + simDt;
     if (team._roadTimer < ROAD_INTERVAL) return;
     team._roadTimer = 0;
+    // One plan in flight at a time (so construction paces naturally).
+    const builder = team.workers[1] || team.workers[0];
+    if (team.roadQueue.length || (builder && builder.job === 'road')) return;
     const kind = team.scriptId === 'longterm' ? 'stone' : 'wood';
     const good = roadCostGood(kind);
     if ((team.stock[good] || 0) < 1) return; // can't afford the preferred road
@@ -367,7 +373,7 @@ export class Game {
       if (!path) continue;
       for (const step of path) {
         if (this._canBuildRoadAt(step.x, step.y)) {
-          this.buildRoad(team.id, kind, step.x, step.y);
+          this.planRoad(team.id, kind, step.x, step.y);
           return;
         }
       }
@@ -529,6 +535,13 @@ export class Game {
       this._startTrade(worker, team);
     }
     if (worker.job === 'trade') { this._stepTrade(worker, team, simDt); return; }
+
+    // The team's builder (worker[1], or worker[0] solo) preempts harvesting to
+    // construct a planned road.
+    if (worker.job !== 'road' && this._isBuilder(worker, team) && team.roadQueue.length) {
+      this._startRoad(worker, team);
+    }
+    if (worker.job === 'road') { this._stepRoad(worker, team, simDt); return; }
 
     if (!worker.job) {
       if (!this._assignJob(worker, team)) return; // nothing to do — idle
@@ -703,6 +716,74 @@ export class Game {
         worker.load = null;
       }
       this._endTrade(worker);
+    }
+  }
+
+  // --- physical road construction ------------------------------------------
+
+  _isBuilder(worker, team) {
+    const b = team.workers[1] || team.workers[0];
+    return b === worker;
+  }
+
+  // Begin the next queued road plan: haul material from the depot, carry it to
+  // the site, then construct. Drops any harvest load first.
+  _startRoad(worker, team) {
+    if (worker.carrying) worker.dropCarried(this.map);
+    this._endJob(worker);
+    const plan = team.roadQueue.shift();
+    if (!plan) return;
+    worker.job = 'road';
+    worker.load = null;
+    worker.road = { x: plan.x, y: plan.y, kind: plan.kind, phase: 'toDepot', t: 0 };
+    this._routeTo(worker, team.depot.x, team.depot.y);
+  }
+
+  _endRoad(worker) {
+    worker.job = null;
+    worker.road = null;
+    worker.load = null;
+    worker.phase = null;
+    worker.path = null;
+  }
+
+  // FSM: toDepot (reserve 1 material) → toSite (carry it) → building (spend
+  // ROAD_BUILD_TIME on site) → lay the road, consuming the material.
+  _stepRoad(worker, team, simDt) {
+    const r = worker.road;
+    const tile = this.map.tiles[r.y]?.[r.x];
+    if (!tile) { this._endRoad(worker); return; }
+
+    if (r.phase === 'toDepot') {
+      if (!this._advanceWorker(worker, simDt)) return;
+      const good = roadCostGood(r.kind);
+      if ((team.stock[good] || 0) < 1) { tile.roadPlan = null; this._endRoad(worker); return; }
+      team.stock[good] -= 1;          // pick up the material
+      worker.load = { good, qty: 1 };
+      r.phase = 'toSite';
+      this._routeTo(worker, r.x, r.y);
+      return;
+    }
+
+    if (r.phase === 'toSite') {
+      if (!this._advanceWorker(worker, simDt)) return;
+      r.phase = 'building';
+      r.t = 0;
+      return;
+    }
+
+    // building — stand on site and work for ROAD_BUILD_TIME
+    r.t += simDt;
+    if (r.t >= ROAD_BUILD_TIME) {
+      if (tile.building || tile.feature || tile.road) {
+        // site became invalid — return the material to the treasury
+        if (worker.load) { team.stock[worker.load.good] = (team.stock[worker.load.good] || 0) + worker.load.qty; }
+      } else {
+        tile.road = r.kind;  // road appears…
+      }
+      worker.load = null;    // …material is consumed (or already refunded)
+      tile.roadPlan = null;
+      this._endRoad(worker);
     }
   }
 
