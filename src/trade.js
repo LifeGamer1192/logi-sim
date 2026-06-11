@@ -73,6 +73,34 @@ export function doBuy(team, post, good, qty) {
   return { bought, spent };
 }
 
+// --- physical-haul helpers (operate on a carried load, not a treasury) ----
+
+/**
+ * Apply a sale of `qty` units of `good` at the post: returns the currency
+ * gained and pushes the sell price down (oversupply). The caller credits the
+ * team's currency and has already removed the goods from the load.
+ */
+export function sellUnits(post, good, qty) {
+  if (qty <= 0) return 0;
+  const gained = sellPrice(post, good) * qty;
+  const e = post.table[good];
+  e.sellMult = Math.max(PRICE_SELL_FLOOR, e.sellMult - PRICE_SELL_STEP * qty);
+  return gained;
+}
+
+/**
+ * Apply a purchase of `qty` units of `good` at the post: returns the currency
+ * spent and pushes the buy price up (scarcity). The caller has already
+ * checked affordability and will add the goods to the load.
+ */
+export function buyUnits(post, good, qty) {
+  if (qty <= 0) return 0;
+  const spent = buyPrice(post, good) * qty;
+  const e = post.table[good];
+  e.buyMult = Math.min(PRICE_BUY_CEIL, e.buyMult + PRICE_BUY_STEP * qty);
+  return spent;
+}
+
 /** Recover a post's prices toward their base over time (demand returns). */
 export function tickTradePost(post, dt) {
   const k = Math.min(1, PRICE_RECOVER * dt);

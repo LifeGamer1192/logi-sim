@@ -366,7 +366,7 @@ export class Renderer {
     ctx.fillStyle = '#e8d2b0';
     ctx.fill();
     ctx.stroke();
-    // carried item marker, tinted by what's in hand
+    // carried floor item marker, tinted by what's in hand
     if (w.carrying) {
       const s = r * 0.95;
       const t = w.carrying.type;
@@ -374,6 +374,20 @@ export class Renderer {
       ctx.fillRect(cx - s / 2, cy - r * 3.5, s, s);
       ctx.strokeStyle = 'rgba(40,28,12,0.7)';
       ctx.strokeRect(cx - s / 2, cy - r * 3.5, s, s);
+    }
+    // trade haul: a bigger crate with the carried quantity
+    if (w.load && w.load.qty > 0) {
+      const s = r * 1.6;
+      ctx.fillStyle = w.load.good === 'stone' ? '#9aa0a6' : '#9c7338';
+      ctx.fillRect(cx - s / 2, cy - r * 4.0, s, s * 0.85);
+      ctx.strokeStyle = 'rgba(40,28,12,0.8)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx - s / 2, cy - r * 4.0, s, s * 0.85);
+      ctx.fillStyle = '#11240f';
+      ctx.font = `bold ${Math.max(7, Math.round(ts * 0.38))}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(w.load.qty), cx, cy - r * 4.0 + s * 0.45);
     }
   }
 }

@@ -279,11 +279,16 @@ function setActiveTeam(i) {
 const GOOD_LABEL = { wood: '木', stone: '石', currency: '¥' };
 const EDGE_LABEL = { top: '北', bottom: '南', left: '西', right: '東' };
 
+function teamHauling(tm) {
+  const trader = tm.workers[0];
+  return (trader && trader.job === 'trade') || tm.tradeQueue.length > 0;
+}
+
 let teamsSig = null;
 function renderTeamsPanel() {
   if (!teamsPanelEl || !game.teams.length) return;
   const sig = game.teams.map((tm) =>
-    `${tm.id}:${tm.scriptId}:${tm.scriptRunning}:${tm.stock.currency}:${tm.stock.wood}:${tm.stock.stone}:${activeTeam}`).join('|');
+    `${tm.id}:${tm.scriptId}:${tm.scriptRunning}:${tm.stock.currency}:${tm.stock.wood}:${tm.stock.stone}:${teamHauling(tm) ? 'H' + tm.tradeQueue.length : '0'}:${activeTeam}`).join('|');
   if (sig === teamsSig) return;
   teamsSig = sig;
   teamsPanelEl.innerHTML = game.teams.map((tm) => {
@@ -291,10 +296,11 @@ function renderTeamsPanel() {
       `<button type="button" data-team="${tm.id}" data-script="${sid}" class="mini${tm.scriptId === sid ? ' active' : ''}">${SCRIPTS[sid].label}</button>`).join('');
     const run = `<button type="button" data-team="${tm.id}" data-run="1" class="mini${tm.scriptRunning ? ' active' : ''}">${tm.scriptRunning ? '実行中' : '停止'}</button>`;
     const sel = tm.id === activeTeam ? ' team-row-active' : '';
+    const haul = teamHauling(tm) ? ` <span class="haul">🚚${tm.tradeQueue.length ? '+' + tm.tradeQueue.length : ''}</span>` : '';
     return (
       `<div class="team-row${sel}" data-team="${tm.id}">` +
       `<button type="button" class="team-pick" data-pick="${tm.id}" style="background:${tm.color.fill}">${teamLetter(tm.id)}</button>` +
-      `<span class="team-stock">¥${tm.stock.currency} 木${tm.stock.wood} 石${tm.stock.stone}</span>` +
+      `<span class="team-stock">¥${tm.stock.currency} 木${tm.stock.wood} 石${tm.stock.stone}${haul}</span>` +
       `<span class="team-ctrls">${scripts}${run}</span>` +
       `</div>`
     );

@@ -13,7 +13,8 @@ export class Worker {
     this.rx = x;         // smoothed render position (floats)
     this.ry = y;
     this.teamId = teamId;
-    this.carrying = null; // the single item in hand, or null
+    this.carrying = null; // the single floor item in hand, or null
+    this.load = null;     // a trade haul { good, qty } being carried, or null
     this.path = null;     // remaining waypoints [{x,y}, ...]
     this.target = null;   // logical goal {x,y} this trip is for
     this.state = 'idle';  // 'idle' | 'toItem' | 'toDepot'

@@ -34,8 +34,9 @@ import { Worker } from './entities/worker.js';
 import { createItem } from './items.js';
 import { createForest, createStoneHill, harvestFeature, regenFeature, canHarvest } from './features.js';
 import { createBuilding, isFull, deposit } from './buildings.js';
-import { createTradePost, tickTradePost, doSell, doBuy } from './trade.js';
+import { createTradePost, tickTradePost, sellUnits, buyUnits, buyPrice } from './trade.js';
 import { runScript } from './scripts.js';
+import { TRADE_LOAD } from './config.js';
 
 export class Game {
   constructor(canvas) {
@@ -311,19 +312,25 @@ export class Game {
     return this._placeBuilding(team, kind, x, y);
   }
 
-  // --- trade (player-driven; always takes priority over scripts) ------------
+  // --- trade orders (physically hauled by a worker) -------------------------
 
-  sellAt(teamId, postIndex, good, qty) {
+  /** Queue a trade order. Manual (priority) orders jump to the front. */
+  enqueueTrade(teamId, kind, good, postIndex, qty, priority = false) {
     const team = this.teams[teamId];
-    const post = this.tradePosts[postIndex];
-    if (!team || !post) return null;
-    return doSell(team, post, good, qty);
+    if (!team || !this.tradePosts[postIndex]) return null;
+    const o = { kind, good, postIndex, qty: Math.max(1, qty | 0) };
+    if (priority) team.tradeQueue.unshift(o);
+    else team.tradeQueue.push(o);
+    return o;
+  }
+
+  // Player-driven trades are manual commands → always queued at priority,
+  // regardless of the team's script run/stop state.
+  sellAt(teamId, postIndex, good, qty) {
+    return this.enqueueTrade(teamId, 'sell', good, postIndex, qty, true);
   }
   buyAt(teamId, postIndex, good, qty) {
-    const team = this.teams[teamId];
-    const post = this.tradePosts[postIndex];
-    if (!team || !post) return null;
-    return doBuy(team, post, good, qty);
+    return this.enqueueTrade(teamId, 'buy', good, postIndex, qty, true);
   }
 
   // --- auto-script control --------------------------------------------------
@@ -441,6 +448,14 @@ export class Game {
    */
   _stepWorker(worker, simDt) {
     const team = this.teams[worker.teamId];
+
+    // The team's trader (worker[0]) preempts harvesting to fulfil a pending
+    // trade order — so manual / script trades get hauled promptly.
+    if (worker.job !== 'trade' && this._isTrader(worker, team) && team.tradeQueue.length) {
+      this._startTrade(worker, team);
+    }
+    if (worker.job === 'trade') { this._stepTrade(worker, team, simDt); return; }
+
     if (!worker.job) {
       if (!this._assignJob(worker, team)) return; // nothing to do — idle
     }
@@ -537,6 +552,84 @@ export class Game {
     worker.phase = null;
     worker.resTile = null;
     worker.path = null;
+  }
+
+  // --- physical trade hauling ----------------------------------------------
+
+  _isTrader(worker, team) {
+    return team.workers.length > 0 && team.workers[0] === worker;
+  }
+
+  // Begin fulfilling the next queued trade order. Drops any harvest load to
+  // the floor first so nothing vanishes.
+  _startTrade(worker, team) {
+    if (worker.carrying) worker.dropCarried(this.map);
+    this._endJob(worker);
+    const o = team.tradeQueue.shift();
+    if (!o) return;
+    const post = this.tradePosts[o.postIndex];
+    if (!post) return;
+    worker.job = 'trade';
+    worker.load = null;
+    worker.trade = { kind: o.kind, good: o.good, postIndex: o.postIndex, qty: o.qty,
+      phase: o.kind === 'sell' ? 'toDepot' : 'toPost' };
+    if (o.kind === 'sell') this._routeTo(worker, team.depot.x, team.depot.y);
+    else this._routeTo(worker, post.buy.x, post.buy.y);
+  }
+
+  _endTrade(worker) {
+    worker.job = null;
+    worker.trade = null;
+    worker.load = null;
+    worker.phase = null;
+    worker.path = null;
+  }
+
+  // FSM:
+  //   sell: toDepot (load up from treasury) → toPost (sell at 換金所)
+  //   buy:  toPost (buy at 購買所)          → toDepot (drop into treasury)
+  _stepTrade(worker, team, simDt) {
+    const tr = worker.trade;
+    const post = this.tradePosts[tr.postIndex];
+    if (!post) { this._endTrade(worker); return; }
+    if (!worker.advance(simDt, WORKER_SPEED)) return; // still travelling
+
+    if (tr.kind === 'sell') {
+      if (tr.phase === 'toDepot') {
+        const avail = team.stock[tr.good] || 0;
+        const load = Math.min(tr.qty, TRADE_LOAD, avail);
+        if (load <= 0) { this._endTrade(worker); return; }
+        team.stock[tr.good] = avail - load;
+        worker.load = { good: tr.good, qty: load };
+        tr.phase = 'toPost';
+        this._routeTo(worker, post.sell.x, post.sell.y);
+      } else { // toPost — sell the carried load
+        if (worker.load) {
+          team.stock.currency += sellUnits(post, worker.load.good, worker.load.qty);
+          worker.load = null;
+        }
+        this._endTrade(worker);
+      }
+      return;
+    }
+
+    // buy
+    if (tr.phase === 'toPost') {
+      const unit = buyPrice(post, tr.good);
+      const afford = Math.floor((team.stock.currency || 0) / unit);
+      const qty = Math.min(tr.qty, TRADE_LOAD, afford);
+      if (qty <= 0) { this._endTrade(worker); return; }
+      team.stock.currency -= buyUnits(post, tr.good, qty);
+      worker.load = { good: tr.good, qty };
+      tr.phase = 'toDepot';
+      this._routeTo(worker, team.depot.x, team.depot.y);
+    } else { // toDepot — unload into the treasury
+      if (worker.load) {
+        team.stock[worker.load.good] = (team.stock[worker.load.good] || 0) + worker.load.qty;
+        worker.load = null;
+      }
+      this._endTrade(worker);
+    }
   }
 
   _updateEnvironment() {

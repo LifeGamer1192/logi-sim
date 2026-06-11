@@ -184,6 +184,10 @@ export const PRICE_RECOVER = 0.05;    // per-second pull of both mults toward 1
 // How often (sim-sec) a running auto-script makes one decision.
 export const SCRIPT_INTERVAL = 1.5;
 
+// Trade is physically hauled: a worker carries up to this many units to/from
+// a trade post per round trip (one cart-load).
+export const TRADE_LOAD = 20;
+
 // Camera panning speed in tiles per second while a key / arrow is held.
 export const CAMERA_SPEED = 22;
 

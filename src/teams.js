@@ -30,6 +30,9 @@ export function createTeam(id, depot, scriptId = 'hasty') {
     scriptId: SCRIPT_IDS.includes(scriptId) ? scriptId : 'hasty',
     scriptRunning: true,
     _scriptTimer: 0,
+    // Pending physical trade orders { kind, good, postIndex, qty }. Manual
+    // orders go to the front; the team's trader worker fulfils them in order.
+    tradeQueue: [],
   };
 }
 
