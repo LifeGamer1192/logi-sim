@@ -3,7 +3,7 @@ import { GRID_COLS, GRID_ROWS, SCROLL_STEP, DRAG_THRESHOLD } from './config.js';
 import { hashSeed, randomSeed } from './core/rng.js';
 import { t, setLang, getLang } from './i18n.js';
 import { Game } from './game.js';
-import { screenToWorld } from './render/camera.js';
+import { screenToWorld, elevationLift, ISO_ELEV_RATIO } from './render/camera.js';
 import { TileType } from './map/tile.js';
 import { teamLetter, SCRIPT_IDS } from './teams.js';
 import { sellPrice, buyPrice } from './trade.js';
@@ -459,7 +459,26 @@ function pointerTile(ev) {
   const rect = canvas.getBoundingClientRect();
   const sx = (ev.clientX - rect.left) * (canvas.width / rect.width);
   const sy = (ev.clientY - rect.top) * (canvas.height / rect.height);
-  const w = screenToWorld(sx, sy, game.camera, game.tileSize, canvas.width, canvas.height);
+  // worldToScreen lifts a tile UP by elevationLift(e)·ts·ISO_ELEV_RATIO, but
+  // screenToWorld assumes flat ground (elevation 0). Pointing at a raised
+  // terrace would otherwise resolve to the flat tile below it — a vertical
+  // mismatch (present even on flat land, which sits at LAND_BASE). Correct it
+  // by re-inverting at the pointed tile's own elevation, iterating to settle
+  // on the tile whose lifted top is actually under the cursor.
+  const K = game.tileSize * ISO_ELEV_RATIO;
+  const tileElev = (wx, wy) => {
+    const tx = Math.floor(wx);
+    const ty = Math.floor(wy);
+    if (!game.map || tx < 0 || ty < 0 || tx >= GRID_COLS || ty >= GRID_ROWS) return 0;
+    return game.map.tiles[ty][tx].elevation;
+  };
+  let w = screenToWorld(sx, sy, game.camera, game.tileSize, canvas.width, canvas.height);
+  for (let i = 0; i < 5; i++) {
+    const e = tileElev(w.x, w.y);
+    const next = screenToWorld(sx, sy + elevationLift(e) * K, game.camera, game.tileSize, canvas.width, canvas.height);
+    if (Math.floor(next.x) === Math.floor(w.x) && Math.floor(next.y) === Math.floor(w.y)) { w = next; break; }
+    w = next;
+  }
   return { x: Math.floor(w.x), y: Math.floor(w.y) };
 }
 
