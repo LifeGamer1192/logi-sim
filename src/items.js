@@ -13,11 +13,19 @@ export function createItem(type = 'package') {
   return { id: _nextItemId++, type, x: -1, y: -1 };
 }
 
-/** A tile can hold an item only if it is land and currently empty. */
+/**
+ * A tile can hold a loose item only if it is land and otherwise clear — no
+ * existing item, no building, and no natural feature occupying it.
+ */
 export function canHoldItem(map, x, y) {
   if (x < 0 || y < 0 || x >= map.cols || y >= map.rows) return false;
   const tile = map.tiles[y][x];
-  return tile.type === TileType.LAND && tile.item == null;
+  return (
+    tile.type === TileType.LAND &&
+    tile.item == null &&
+    tile.building == null &&
+    tile.feature == null
+  );
 }
 
 /**

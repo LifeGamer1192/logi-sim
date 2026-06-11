@@ -52,6 +52,12 @@ export function createTile({ x, y, type, elevation, fertility, moisture, sunligh
     // logi-sim: the single item resting on this floor tile, or null. A tile
     // holds at most one item (see items.js placeItemNear).
     item: null,
+    // logi-sim: a natural resource on this tile (forest / stone hill), or
+    // null. See features.js.
+    feature: null,
+    // logi-sim: a built facility on this tile (warehouse / loggingCamp /
+    // stoneCutter), or null. See buildings.js.
+    building: null,
     // α33: water-tile subtype (ocean / river / lake). null for land tiles.
     // Set by classifyWaterBodies() during map generation.
     waterKind: null,

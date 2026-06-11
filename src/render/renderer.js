@@ -168,12 +168,15 @@ export class Renderer {
       ctx.fillRect(0, 0, cw, ch);
     }
 
-    // --- entities: items + workers, back-to-front -----------------------
+    // --- features, buildings, items, workers — back-to-front ------------
     const drawables = [];
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
-        const it = tiles[y][x].item;
-        if (it) drawables.push({ kind: 'item', x: x + 0.5, y: y + 0.5, e: tiles[y][x].elevation, ref: it });
+        const tile = tiles[y][x];
+        const e = tile.elevation;
+        if (tile.feature) drawables.push({ kind: 'feature', x: x + 0.5, y: y + 0.5, e, ref: tile.feature });
+        if (tile.building) drawables.push({ kind: 'building', x: x + 0.5, y: y + 0.5, e, ref: tile.building });
+        if (tile.item) drawables.push({ kind: 'item', x: x + 0.5, y: y + 0.5, e, ref: tile.item });
       }
     }
     const workers = scene.workers || [];
@@ -186,15 +189,124 @@ export class Renderer {
     drawables.sort((a, b) => (a.y + a.x) - (b.y + b.x));
     for (const d of drawables) {
       const p = proj(d.x, d.y, d.e);
-      if (d.kind === 'item') this._drawItem(ctx, p.x, p.y, ts);
+      if (d.kind === 'feature') this._drawFeature(ctx, p.x, p.y, ts, d.ref);
+      else if (d.kind === 'building') this._drawBuilding(ctx, p.x, p.y, ts, d.ref, scene.teams);
+      else if (d.kind === 'item') this._drawItem(ctx, p.x, p.y, ts, d.ref);
       else this._drawWorker(ctx, p.x, p.y, ts, d.ref, scene.teams);
     }
   }
 
-  _drawItem(ctx, cx, cy, ts) {
+  // Forest / stone hill. Size scales with stock; at stock 0 it bottoms out
+  // as a sapling (forest) or a single pebble (stone hill).
+  _drawFeature(ctx, cx, cy, ts, feat) {
+    const stock = Math.max(0, Math.min(feat.max, feat.stock));
+    const frac = feat.max > 0 ? stock / feat.max : 0;
+    if (feat.kind === 'forest') {
+      const trunkH = Math.max(2, ts * (0.12 + 0.30 * frac));
+      const crownR = Math.max(2.5, ts * (0.14 + 0.30 * frac));
+      // trunk
+      ctx.fillStyle = '#7a5230';
+      ctx.fillRect(cx - ts * 0.04, cy - trunkH, Math.max(2, ts * 0.08), trunkH);
+      // crown — darker/greener when full, paler sapling when low
+      const green = stock === 0 ? '#9ec47a' : '#3f7a36';
+      ctx.fillStyle = green;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - trunkH - crownR * 0.6, crownR, crownR * 1.05, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(20,40,16,0.5)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    } else {
+      // stone hill — a clump of rocks; a lone pebble at 0.
+      const R = Math.max(3, ts * (0.16 + 0.34 * frac));
+      ctx.fillStyle = '#9aa0a6';
+      ctx.strokeStyle = 'rgba(40,44,50,0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx - R, cy);
+      ctx.lineTo(cx - R * 0.4, cy - R * 0.9);
+      ctx.lineTo(cx + R * 0.5, cy - R * 1.0);
+      ctx.lineTo(cx + R, cy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#c2c7cc';
+      ctx.fillRect(cx - R * 0.5, cy - R * 0.5, R * 0.5, R * 0.4);
+    }
+  }
+
+  // Warehouse / logging camp / stone cutter — a small coloured box with a
+  // team-tinted roof and a stored-count badge.
+  _drawBuilding(ctx, cx, cy, ts, b, teams) {
+    const w = Math.max(8, ts * 0.7);
+    const h = Math.max(7, ts * 0.55);
+    const roof = {
+      warehouse: '#c8985a',
+      loggingCamp: '#6f8f4a',
+      stoneCutter: '#8a8f96',
+    }[b.kind] || '#b0b0b0';
+    // walls
+    ctx.fillStyle = '#e3d6bd';
+    ctx.fillRect(cx - w / 2, cy - h, w, h);
+    ctx.strokeStyle = 'rgba(40,30,16,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx - w / 2, cy - h, w, h);
+    // roof band
+    ctx.fillStyle = roof;
+    ctx.fillRect(cx - w / 2, cy - h, w, h * 0.4);
+    // team chip
+    const teamColor = (teams && teams[b.teamId]?.color);
+    if (teamColor) {
+      ctx.fillStyle = teamColor.fill;
+      ctx.fillRect(cx - w / 2, cy - h, w * 0.22, h * 0.4);
+    }
+    // stored count
+    const n = b.wood + b.stone;
+    if (n > 0) {
+      ctx.fillStyle = '#23303a';
+      ctx.font = `${Math.max(7, Math.round(ts * 0.42))}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(n), cx, cy - h * 0.45);
+    }
+  }
+
+  _drawItem(ctx, cx, cy, ts, item) {
+    const type = item?.type || 'package';
     const s = Math.max(4, ts * 0.42);
+    if (type === 'wood') {
+      // a couple of stacked logs
+      const w = s * 1.0;
+      const h = s * 0.34;
+      ctx.fillStyle = '#9c7338';
+      ctx.strokeStyle = 'rgba(40,28,12,0.6)';
+      ctx.lineWidth = 1;
+      ctx.fillRect(cx - w / 2, cy - h * 2, w, h);
+      ctx.strokeRect(cx - w / 2, cy - h * 2, w, h);
+      ctx.fillRect(cx - w / 2, cy - h, w, h);
+      ctx.strokeRect(cx - w / 2, cy - h, w, h);
+      ctx.fillStyle = '#c79a5a';
+      ctx.beginPath(); ctx.arc(cx - w / 2, cy - h * 1.5, h * 0.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx - w / 2, cy - h * 0.5, h * 0.5, 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+    if (type === 'stone') {
+      const R = s * 0.55;
+      ctx.fillStyle = '#9aa0a6';
+      ctx.strokeStyle = 'rgba(40,44,50,0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx - R, cy);
+      ctx.lineTo(cx - R * 0.3, cy - R);
+      ctx.lineTo(cx + R * 0.6, cy - R * 0.9);
+      ctx.lineTo(cx + R, cy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      return;
+    }
+    // default crate (package)
     const h = s * 0.62;
-    // a little crate: top face + front faces.
     ctx.fillStyle = '#c79a5a';
     ctx.fillRect(cx - s / 2, cy - h, s, h);
     ctx.fillStyle = '#9c7338';
@@ -202,13 +314,6 @@ export class Renderer {
     ctx.strokeStyle = 'rgba(40,28,12,0.6)';
     ctx.lineWidth = 1;
     ctx.strokeRect(cx - s / 2, cy - h, s, h);
-    // cross strap
-    ctx.beginPath();
-    ctx.moveTo(cx - s / 2, cy - h);
-    ctx.lineTo(cx + s / 2, cy - h * 0.42);
-    ctx.moveTo(cx + s / 2, cy - h);
-    ctx.lineTo(cx - s / 2, cy - h * 0.42);
-    ctx.stroke();
   }
 
   _drawWorker(ctx, cx, cy, ts, w, teams) {
@@ -228,13 +333,14 @@ export class Renderer {
     ctx.fillStyle = '#e8d2b0';
     ctx.fill();
     ctx.stroke();
-    // carried item marker
+    // carried item marker, tinted by what's in hand
     if (w.carrying) {
-      const s = r * 0.9;
-      ctx.fillStyle = '#c79a5a';
-      ctx.fillRect(cx - s / 2, cy - r * 3.4, s, s);
+      const s = r * 0.95;
+      const t = w.carrying.type;
+      ctx.fillStyle = t === 'stone' ? '#9aa0a6' : t === 'wood' ? '#9c7338' : '#c79a5a';
+      ctx.fillRect(cx - s / 2, cy - r * 3.5, s, s);
       ctx.strokeStyle = 'rgba(40,28,12,0.7)';
-      ctx.strokeRect(cx - s / 2, cy - r * 3.4, s, s);
+      ctx.strokeRect(cx - s / 2, cy - r * 3.5, s, s);
     }
   }
 }

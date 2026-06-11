@@ -23,8 +23,13 @@ const zoomsEl = $('zooms');
 const langsEl = $('langs');
 const pauseBtn = $('pause-btn');
 const pausedBadge = $('paused-badge');
+const buildToolsEl = $('build-tools');
+const teamSelectEl = $('team-select');
+const buildHintEl = $('build-hint');
 
-let started = false; // becomes true after the first Generate
+let started = false;   // becomes true after the first Generate
+let buildTool = null;  // null = inspect; else 'warehouse'|'loggingCamp'|'stoneCutter'
+let activeTeam = 0;    // team the build tool places for
 
 // --- panels ---------------------------------------------------------------
 
@@ -209,6 +214,9 @@ function generate() {
   const workersPerTeam = Number(workersInput?.value) || 4;
   game.newMap(seed, { teamCount, workersPerTeam });
   if (startScreen) startScreen.hidden = true;
+  activeTeam = Math.min(activeTeam, teamCount - 1);
+  renderTeamSelect();
+  if (buildHintEl) buildHintEl.textContent = buildHintIdle();
   refreshPanels();
   if (!started) { started = true; game.start(); }
 }
@@ -218,6 +226,37 @@ $('regenerate')?.addEventListener('click', () => {
   // Re-open the setup screen so teams / workers can be reconfigured.
   if (startScreen) startScreen.hidden = false;
 });
+
+// --- build panel ----------------------------------------------------------
+
+if (buildToolsEl) {
+  buildToolsEl.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-build]');
+    if (!btn) return;
+    buildTool = btn.dataset.build === 'none' ? null : btn.dataset.build;
+    setActive(buildToolsEl, 'data-build', btn.dataset.build);
+    if (buildHintEl) buildHintEl.textContent = buildHintIdle();
+  });
+}
+
+// Team selector — rebuilt after each Generate to match the team count.
+function renderTeamSelect() {
+  if (!teamSelectEl) return;
+  teamSelectEl.innerHTML = game.teams
+    .map((tm, i) =>
+      `<button type="button" data-team="${i}" class="${i === activeTeam ? 'active' : ''}" ` +
+      `style="border-color:${tm.color.fill}">${String.fromCharCode(65 + i)}</button>`)
+    .join('');
+}
+if (teamSelectEl) {
+  teamSelectEl.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-team]');
+    if (!btn) return;
+    activeTeam = Number(btn.dataset.team);
+    setActive(teamSelectEl, 'data-team', activeTeam);
+    if (buildHintEl) buildHintEl.textContent = buildHintIdle();
+  });
+}
 
 // --- camera panning -------------------------------------------------------
 
@@ -299,7 +338,7 @@ canvas.addEventListener('pointermove', (ev) => {
 canvas.addEventListener('pointerup', (ev) => {
   if (pressStart && game.map) {
     const moved = Math.hypot(ev.clientX - pressStart.x, ev.clientY - pressStart.y);
-    if (moved < DRAG_THRESHOLD) spawnAtPointer(ev);
+    if (moved < DRAG_THRESHOLD) clickBuild(ev);
   }
   dragging = false; lastDrag = null; pressStart = null;
 });
@@ -323,10 +362,43 @@ function pointerTile(ev) {
   return { x: Math.floor(w.x), y: Math.floor(w.y) };
 }
 
-function spawnAtPointer(ev) {
+function clickBuild(ev) {
+  if (!buildTool) return; // "inspect" mode — clicking does nothing
   const { x, y } = pointerTile(ev);
   if (x < 0 || y < 0 || x >= GRID_COLS || y >= GRID_ROWS) return;
-  game.spawnItemAt(x, y);
+  const ok = game.build(activeTeam, buildTool, x, y);
+  if (!ok) flashBuildFail();
+}
+
+let buildFailTimer = null;
+function flashBuildFail() {
+  if (!buildHintEl) return;
+  buildHintEl.textContent = '建てられません（地面が空いていない／木1石1が不足）';
+  buildHintEl.classList.add('warn');
+  clearTimeout(buildFailTimer);
+  buildFailTimer = setTimeout(() => {
+    buildHintEl.classList.remove('warn');
+    buildHintEl.textContent = buildHintIdle();
+  }, 2200);
+}
+function buildHintIdle() {
+  const names = { warehouse: '倉庫', loggingCamp: '伐採所', stoneCutter: '石切り所' };
+  if (!buildTool) return 'Build: なし（クリックで検査）';
+  return `Build: ${names[buildTool]} を チーム${String.fromCharCode(65 + activeTeam)} で建築（木1石1）`;
+}
+
+function describeTile(tile) {
+  if (tile.building) {
+    const names = { warehouse: '倉庫', loggingCamp: '伐採所', stoneCutter: '石切り所' };
+    return `${names[tile.building.kind]} 木${tile.building.wood}/石${tile.building.stone}`;
+  }
+  if (tile.feature) {
+    return tile.feature.kind === 'forest'
+      ? `森 木${tile.feature.stock}/${tile.feature.max}`
+      : `石山 石${tile.feature.stock}/${tile.feature.max}`;
+  }
+  if (tile.item) return tile.item.type === 'wood' ? '木' : tile.item.type === 'stone' ? '石' : '荷物';
+  return tile.type === TileType.WATER ? t('legend.water') : t('legend.richSoil');
 }
 
 function updateTooltip(ev) {
@@ -335,12 +407,11 @@ function updateTooltip(ev) {
   if (x < 0 || y < 0 || x >= GRID_COLS || y >= GRID_ROWS) { tooltip.hidden = true; game.hover = null; return; }
   game.hover = { x, y };
   const tile = game.map.tiles[y][x];
-  const kind = tile.type === TileType.WATER ? t('legend.water') : t('legend.richSoil');
   const rect = canvas.getBoundingClientRect();
   tooltip.hidden = false;
   tooltip.style.left = `${ev.clientX - rect.left + 12}px`;
   tooltip.style.top = `${ev.clientY - rect.top + 12}px`;
-  tooltip.textContent = `(${x}, ${y}) ${kind} · Lv ${tile.level}${tile.item ? ' · 荷物' : ''}`;
+  tooltip.textContent = `(${x}, ${y}) Lv${tile.level} · ${describeTile(tile)}`;
 }
 canvas.addEventListener('pointerleave', () => { if (tooltip) tooltip.hidden = true; game.hover = null; });
 

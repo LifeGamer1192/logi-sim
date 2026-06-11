@@ -126,6 +126,31 @@ export const DEFAULT_WORKERS_PER_TEAM = 4;
 // Worker walking speed in tiles per second.
 export const WORKER_SPEED = 3.5;
 
+// --- natural resources & facilities (logi-sim) ----------------------------
+// Forests yield wood, stone hills yield stone. Each starts with a stock that
+// depletes as it is harvested (its look shrinks toward a sapling / a pebble
+// at 0) and regrows over time back up to RESOURCE_MAX.
+export const RESOURCE_MAX = 5;        // full stock of a forest / stone hill
+export const REGEN_INTERVAL = 6;      // sim-seconds to regrow one stock point
+export const FOREST_COUNT = 70;       // forests scattered on a fresh map
+export const STONEHILL_COUNT = 45;    // stone hills scattered on a fresh map
+
+// Building storage caps.
+export const WAREHOUSE_CAP = 10;      // mixed wood + stone
+export const LOGGING_CAP = 5;         // wood only
+export const QUARRY_CAP = 5;          // stone only
+
+// Every building costs the same to put up.
+export const BUILD_COST = { wood: 1, stone: 1 };
+
+// Each team starts with a depot warehouse holding this much, so the first
+// logging camp / stone cutter can be built before any harvesting happens.
+export const START_WOOD = 4;
+export const START_STONE = 4;
+
+// A forest/stone hill counts as "near" a camp within this manhattan distance.
+export const HARVEST_NEAR = 8;
+
 // Camera panning speed in tiles per second while a key / arrow is held.
 export const CAMERA_SPEED = 22;
 

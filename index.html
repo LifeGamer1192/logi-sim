@@ -85,7 +85,20 @@
             <summary class="label" data-i18n="panel.season">Season</summary>
             <dl id="env-stats" class="stats stats-2col"></dl>
             <p class="reason" id="team-summary"></p>
-            <p class="reason">クリックで荷物を1個置けます。配送員が拠点へ運びます。</p>
+          </details>
+
+          <details class="control-group" open>
+            <summary class="label">Build / 設備</summary>
+            <div class="tools" id="build-tools">
+              <button type="button" data-build="none" class="active">なし</button>
+              <button type="button" data-build="warehouse">倉庫</button>
+              <button type="button" data-build="loggingCamp">伐採所</button>
+              <button type="button" data-build="stoneCutter">石切り所</button>
+            </div>
+            <p class="reason-label">対象チーム</p>
+            <div class="tools" id="team-select"></div>
+            <p class="reason" id="build-hint">Build: なし（クリックで検査）</p>
+            <p class="reason">設備を選びマップをクリックで建築（木1石1）。森＝木、石山＝石。各チームは初期倉庫＋伐採所＋石切り所つき。</p>
           </details>
 
           <details class="control-group" open>
