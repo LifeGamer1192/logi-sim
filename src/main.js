@@ -486,7 +486,10 @@ function clickBuild(ev) {
   if (!buildTool) return; // "inspect" mode — clicking does nothing
   const { x, y } = pointerTile(ev);
   if (x < 0 || y < 0 || x >= GRID_COLS || y >= GRID_ROWS) return;
-  const ok = game.build(activeTeam, buildTool, x, y);
+  let ok;
+  if (buildTool === 'woodRoad') ok = game.buildRoad(activeTeam, 'wood', x, y);
+  else if (buildTool === 'stoneRoad') ok = game.buildRoad(activeTeam, 'stone', x, y);
+  else ok = game.build(activeTeam, buildTool, x, y);
   if (!ok) flashBuildFail();
 }
 
@@ -516,7 +519,9 @@ function describeTile(tile) {
     return `${t('feat.' + f.kind)} ${good}${f.stock}/${f.max}`;
   }
   if (tile.item) return t('good.' + (tile.item.type === 'wood' || tile.item.type === 'stone' ? tile.item.type : 'package'));
-  return tile.type === TileType.WATER ? t('legend.water') : t('legend.richSoil');
+  const base = tile.type === TileType.WATER ? t('legend.water') : t('legend.richSoil');
+  if (tile.road) return `${base} · ${t(tile.road === 'stone' ? 'build.stoneRoad' : 'build.woodRoad')}`;
+  return base;
 }
 
 function updateTooltip(ev) {

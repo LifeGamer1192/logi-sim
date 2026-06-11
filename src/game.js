@@ -36,7 +36,8 @@ import { createForest, createStoneHill, harvestFeature, regenFeature, canHarvest
 import { createBuilding, isFull, deposit } from './buildings.js';
 import { createTradePost, tickTradePost, sellUnits, buyUnits, buyPrice } from './trade.js';
 import { runScript } from './scripts.js';
-import { TRADE_LOAD } from './config.js';
+import { TRADE_LOAD, ROAD_INTERVAL, ROAD_COST } from './config.js';
+import { roadSpeedMultiplier, roadCostGood } from './roads.js';
 
 export class Game {
   constructor(canvas) {
@@ -312,6 +313,67 @@ export class Game {
     return this._placeBuilding(team, kind, x, y);
   }
 
+  // --- roads ----------------------------------------------------------------
+
+  // A road may be laid on clear land (no feature / building / trade); an item
+  // on the tile is fine — the road is the ground under it.
+  _canBuildRoadAt(x, y) {
+    if (!this._isLand(x, y)) return false;
+    const t = this.map.tiles[y][x];
+    return t.feature == null && t.building == null && t.trade == null && t.road == null;
+  }
+
+  /**
+   * Lay a road of `kind` ('wood' | 'stone') for a team, paying its cost from
+   * the treasury. Returns true on success.
+   */
+  buildRoad(teamId, kind, x, y) {
+    const team = this.teams[teamId];
+    if (!team || !this._canBuildRoadAt(x, y)) return false;
+    const good = roadCostGood(kind);
+    const cost = ROAD_COST[kind]?.[good] ?? 1;
+    if ((team.stock[good] || 0) < cost) return false;
+    team.stock[good] -= cost;
+    this.map.tiles[y][x].road = kind;
+    return true;
+  }
+
+  // A running script paves one tile per ROAD_INTERVAL along a route from the
+  // depot to a facility / nearest trade post. Hasty lays wood (cheap), long-
+  // term lays stone (faster) — matching their personalities.
+  _autoBuildRoads(team, simDt) {
+    if (!team.scriptRunning) return;
+    team._roadTimer = (team._roadTimer || 0) + simDt;
+    if (team._roadTimer < ROAD_INTERVAL) return;
+    team._roadTimer = 0;
+    const kind = team.scriptId === 'longterm' ? 'stone' : 'wood';
+    const good = roadCostGood(kind);
+    if ((team.stock[good] || 0) < 1) return; // can't afford the preferred road
+
+    const targets = [];
+    for (const b of team.buildings) if (b.kind !== 'warehouse') targets.push({ x: b.x, y: b.y });
+    let np = null;
+    let nd = Infinity;
+    for (const p of this.tradePosts) {
+      const d = Math.abs(p.x - team.depot.x) + Math.abs(p.y - team.depot.y);
+      if (d < nd) { nd = d; np = p; }
+    }
+    if (np) targets.push({ x: np.sell.x, y: np.sell.y });
+
+    for (const tg of targets) {
+      const path = findPath(this.map, { x: team.depot.x, y: team.depot.y }, { x: tg.x, y: tg.y }, false, {
+        maxStep: 1, fallbackToNearest: true,
+      });
+      if (!path) continue;
+      for (const step of path) {
+        if (this._canBuildRoadAt(step.x, step.y)) {
+          this.buildRoad(team.id, kind, step.x, step.y);
+          return;
+        }
+      }
+    }
+  }
+
   // --- trade orders (physically hauled by a worker) -------------------------
 
   /** Queue a trade order. Manual (priority) orders jump to the front. */
@@ -412,8 +474,11 @@ export class Game {
       this._drainCamps();
     }
 
-    // Running auto-scripts act on their own timer.
-    for (const team of this.teams) runScript(team, this.tradePosts, simDt);
+    // Running auto-scripts act on their own timer (trade + road building).
+    for (const team of this.teams) {
+      runScript(team, this.tradePosts, simDt);
+      this._autoBuildRoads(team, simDt);
+    }
   }
 
   // Move one unit of buffered material from each camp/cutter to its team's
@@ -433,6 +498,15 @@ export class Game {
       fallbackToNearest: true,
     });
     worker.path = path || [];
+  }
+
+  // Advance a worker, scaling its speed by the road under it (shared infra:
+  // any road on the current tile speeds anyone up). Returns true at path end.
+  _advanceWorker(worker, simDt) {
+    const tx = Math.max(0, Math.min(this.map.cols - 1, Math.round(worker.rx)));
+    const ty = Math.max(0, Math.min(this.map.rows - 1, Math.round(worker.ry)));
+    const mult = roadSpeedMultiplier(this.map.tiles[ty][tx].road);
+    return worker.advance(simDt, WORKER_SPEED * mult);
   }
 
   _buildingAt(x, y) {
@@ -464,7 +538,7 @@ export class Game {
     if (!camp) { this._endJob(worker); return; } // camp gone
 
     if (worker.phase === 'toCamp') {
-      if (worker.advance(simDt, WORKER_SPEED)) {
+      if (this._advanceWorker(worker, simDt)) {
         if (isFull(camp)) { this._endJob(worker); return; }
         this._headToResource(worker);
       }
@@ -472,7 +546,7 @@ export class Game {
     }
 
     if (worker.phase === 'toResource') {
-      if (worker.advance(simDt, WORKER_SPEED)) {
+      if (this._advanceWorker(worker, simDt)) {
         const r = worker.resTile;
         const feat = r ? this.featureAt(r.x, r.y) : null;
         const near = r && Math.abs(worker.x - r.x) + Math.abs(worker.y - r.y) <= 1;
@@ -490,7 +564,7 @@ export class Game {
     }
 
     if (worker.phase === 'toDeposit') {
-      if (worker.advance(simDt, WORKER_SPEED)) {
+      if (this._advanceWorker(worker, simDt)) {
         const type = worker.carrying?.type;
         if (type && deposit(camp, type)) {
           worker.carrying = null;
@@ -592,7 +666,7 @@ export class Game {
     const tr = worker.trade;
     const post = this.tradePosts[tr.postIndex];
     if (!post) { this._endTrade(worker); return; }
-    if (!worker.advance(simDt, WORKER_SPEED)) return; // still travelling
+    if (!this._advanceWorker(worker, simDt)) return; // still travelling
 
     if (tr.kind === 'sell') {
       if (tr.phase === 'toDepot') {

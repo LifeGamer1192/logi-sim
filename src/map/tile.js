@@ -61,6 +61,9 @@ export function createTile({ x, y, type, elevation, fertility, moisture, sunligh
     // logi-sim: a trade-post endpoint on this tile, or null. Shape:
     // { post, role: 'sell' | 'buy' }. See trade.js.
     trade: null,
+    // logi-sim: a paved road on this tile speeding up walkers, or null.
+    // 'wood' (2×) | 'stone' (3×). See roads.js.
+    road: null,
     // α33: water-tile subtype (ocean / river / lake). null for land tiles.
     // Set by classifyWaterBodies() during map generation.
     waterKind: null,

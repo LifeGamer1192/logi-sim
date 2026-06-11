@@ -160,6 +160,24 @@ export class Renderer {
         ctx.fill();
         ctx.strokeStyle = OUTLINE;
         ctx.stroke();
+        // Road surface — an inset diamond in the paving colour.
+        if (tile.road) {
+          const ccx = (back.x + right.x + front.x + left.x) * 0.25;
+          const ccy = (back.y + right.y + front.y + left.y) * 0.25;
+          const k = 0.74; // inset toward centre
+          ctx.fillStyle = tile.road === 'stone' ? '#8b9099' : '#9c7338';
+          ctx.beginPath();
+          ctx.moveTo(ccx + (back.x - ccx) * k, ccy + (back.y - ccy) * k);
+          ctx.lineTo(ccx + (right.x - ccx) * k, ccy + (right.y - ccy) * k);
+          ctx.lineTo(ccx + (front.x - ccx) * k, ccy + (front.y - ccy) * k);
+          ctx.lineTo(ccx + (left.x - ccx) * k, ccy + (left.y - ccy) * k);
+          ctx.closePath();
+          ctx.fill();
+          if (tile.road === 'stone') {
+            ctx.strokeStyle = 'rgba(40,44,50,0.5)';
+            ctx.stroke();
+          }
+        }
       }
     }
 
