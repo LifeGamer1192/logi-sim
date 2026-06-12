@@ -45,7 +45,14 @@ function waterColor(tile) {
 const VIEW_MODES = {
   terrain(tile) {
     if (tile.type === TileType.WATER) return waterColor(tile);
-    return mix([196, 184, 132], [70, 130, 55], tile.fertility);
+    const lvl = Math.min(1, (tile.level || 0) / 5);
+    const f = tile.fertility;
+    // 4-corner blend: elevation(low↔high) × fertility(dry↔lush)
+    const dryLow  = [210, 190, 138];
+    const wetLow  = [82,  148,  62];
+    const dryHigh = [168, 158, 128];
+    const wetHigh = [94,  154,  74];
+    return mix(mix(dryLow, wetLow, f), mix(dryHigh, wetHigh, f), lvl * 0.55);
   },
   fertility(tile) {
     if (tile.type === TileType.WATER) return 'rgb(45,52,64)';
@@ -61,10 +68,12 @@ const VIEW_MODES = {
 
 // Cliff-face dirt palette. The SW (front-left) face catches more light than
 // the SE (front-right) face, which sells the block relief.
-const FACE_LIT = '#8a6740';
-const FACE_SHADED = '#5f4528';
-const FACE_BASE = '#3a2a18';   // the deep border base block
-const OUTLINE = 'rgba(20,14,8,0.35)';
+const FACE_LIT    = '#966e44';
+const FACE_LIT2   = '#7a5530'; // darker bottom of lit face
+const FACE_SHADED = '#624830';
+const FACE_SHADED2 = '#452f1c'; // darker bottom of shaded face
+const FACE_BASE   = '#3a2a18';  // the deep border base block
+const OUTLINE = 'rgba(20,14,8,0.40)';
 
 export class Renderer {
   constructor(canvas) {
@@ -125,7 +134,13 @@ export class Renderer {
         if (e > erR + 1e-4) {
           const lowR  = proj(x + 1, y,     erR);
           const lowF  = proj(x + 1, y + 1, erR);
-          ctx.fillStyle = isBorder(x + 1, y) ? FACE_BASE : FACE_SHADED;
+          if (isBorder(x + 1, y)) {
+            ctx.fillStyle = FACE_BASE;
+          } else {
+            const gR = ctx.createLinearGradient(right.x, right.y, lowF.x, lowF.y);
+            gR.addColorStop(0, FACE_SHADED); gR.addColorStop(1, FACE_SHADED2);
+            ctx.fillStyle = gR;
+          }
           ctx.beginPath();
           ctx.moveTo(right.x, right.y);
           ctx.lineTo(front.x, front.y);
@@ -141,7 +156,13 @@ export class Renderer {
         if (e > elL + 1e-4) {
           const lowL  = proj(x,     y + 1, elL);
           const lowF  = proj(x + 1, y + 1, elL);
-          ctx.fillStyle = isBorder(x, y + 1) ? FACE_BASE : FACE_LIT;
+          if (isBorder(x, y + 1)) {
+            ctx.fillStyle = FACE_BASE;
+          } else {
+            const gL = ctx.createLinearGradient(left.x, left.y, lowF.x, lowF.y);
+            gL.addColorStop(0, FACE_LIT); gL.addColorStop(1, FACE_LIT2);
+            ctx.fillStyle = gL;
+          }
           ctx.beginPath();
           ctx.moveTo(left.x, left.y);
           ctx.lineTo(front.x, front.y);
@@ -352,26 +373,37 @@ export class Renderer {
       sawmill: '#c0a070', charcoalKiln: '#383838', kiln: '#d06030',
       smelter: '#b85020', alloyForge: '#b09050', ropeMaker: '#c8b870',
       windmill: '#7090c0', weavery: '#9060b0', smithy: '#606870',
-      precisionWorkshop: '#5080a0',
+      precisionWorkshop: '#5080a0', spinningMill: '#b080c0',
     };
     const roof = ROOF[b.kind] || '#b0b0b0';
+    // Wall
     ctx.fillStyle = '#e3d6bd';
     ctx.fillRect(cx - w / 2, cy - h, w, h);
-    ctx.strokeStyle = 'rgba(40,30,16,0.7)';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(cx - w / 2, cy - h, w, h);
+    // Right-side shadow strip for 3-D depth
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    ctx.fillRect(cx + w / 2 - w * 0.12, cy - h, w * 0.12, h);
+    // Roof band
     ctx.fillStyle = roof;
     ctx.fillRect(cx - w / 2, cy - h, w, h * 0.4);
+    // Top highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.fillRect(cx - w / 2, cy - h, w, h * 0.08);
+    // Team colour accent on roof
     const teamColor = (teams && teams[b.teamId]?.color);
     if (teamColor) {
       ctx.fillStyle = teamColor.fill;
       ctx.fillRect(cx - w / 2, cy - h, w * 0.22, h * 0.4);
     }
+    // Outline
+    ctx.strokeStyle = 'rgba(40,30,16,0.72)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx - w / 2, cy - h, w, h);
+    // Stock count badge
     let n = 0;
     for (const g of ALL_GOODS_IDS) n += b[g] || 0;
     if (n > 0) {
-      ctx.fillStyle = '#23303a';
-      ctx.font = `${Math.max(7, Math.round(ts * 0.42))}px sans-serif`;
+      ctx.fillStyle = '#1a2830';
+      ctx.font = `bold ${Math.max(7, Math.round(ts * 0.42))}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(String(n), cx, cy - h * 0.45);
@@ -413,17 +445,13 @@ export class Renderer {
   _drawItem(ctx, cx, cy, ts, item) {
     const type = item?.type || 'package';
     const s = Math.max(4, ts * 0.42);
+    ctx.lineWidth = 1;
+
     if (type === 'wood') {
-      // a couple of stacked logs
-      const w = s * 1.0;
-      const h = s * 0.34;
-      ctx.fillStyle = '#9c7338';
-      ctx.strokeStyle = 'rgba(40,28,12,0.6)';
-      ctx.lineWidth = 1;
-      ctx.fillRect(cx - w / 2, cy - h * 2, w, h);
-      ctx.strokeRect(cx - w / 2, cy - h * 2, w, h);
-      ctx.fillRect(cx - w / 2, cy - h, w, h);
-      ctx.strokeRect(cx - w / 2, cy - h, w, h);
+      const w = s * 1.0, h = s * 0.34;
+      ctx.fillStyle = '#9c7338'; ctx.strokeStyle = 'rgba(40,28,12,0.6)';
+      ctx.fillRect(cx - w / 2, cy - h * 2, w, h); ctx.strokeRect(cx - w / 2, cy - h * 2, w, h);
+      ctx.fillRect(cx - w / 2, cy - h,     w, h); ctx.strokeRect(cx - w / 2, cy - h,     w, h);
       ctx.fillStyle = '#c79a5a';
       ctx.beginPath(); ctx.arc(cx - w / 2, cy - h * 1.5, h * 0.5, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(cx - w / 2, cy - h * 0.5, h * 0.5, 0, Math.PI * 2); ctx.fill();
@@ -431,28 +459,147 @@ export class Renderer {
     }
     if (type === 'stone') {
       const R = s * 0.55;
-      ctx.fillStyle = '#9aa0a6';
-      ctx.strokeStyle = 'rgba(40,44,50,0.6)';
-      ctx.lineWidth = 1;
+      ctx.fillStyle = '#9aa0a6'; ctx.strokeStyle = 'rgba(40,44,50,0.6)';
       ctx.beginPath();
-      ctx.moveTo(cx - R, cy);
-      ctx.lineTo(cx - R * 0.3, cy - R);
-      ctx.lineTo(cx + R * 0.6, cy - R * 0.9);
-      ctx.lineTo(cx + R, cy);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+      ctx.moveTo(cx - R, cy); ctx.lineTo(cx - R * 0.3, cy - R);
+      ctx.lineTo(cx + R * 0.6, cy - R * 0.9); ctx.lineTo(cx + R, cy);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
       return;
     }
-    // default crate (package)
-    const h = s * 0.62;
+    // Cotton — white fluffy puff
+    if (type === 'cotton') {
+      const r = s * 0.4;
+      ctx.fillStyle = '#f0ece0'; ctx.strokeStyle = 'rgba(180,170,140,0.5)';
+      for (const [ox, oy] of [[-r*0.5,-r*0.2],[r*0.5,-r*0.2],[0,-r*0.7],[0,0]]) {
+        ctx.beginPath(); ctx.arc(cx+ox, cy+oy, r*0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      }
+      return;
+    }
+    // Grain-family sack (wheat, potato, turnip, rice, grain, flour)
+    if (['wheat','potato','turnip','rice','grain','flour'].includes(type)) {
+      const SACK = { wheat:'#d4b060', potato:'#c0904a', turnip:'#d06090', rice:'#e8e4c8', grain:'#d4b060', flour:'#e8e4d4' };
+      const w = s * 0.8, h = s * 0.9;
+      ctx.fillStyle = SACK[type] || '#c8a868';
+      ctx.strokeStyle = 'rgba(60,40,10,0.5)';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - h);
+      ctx.bezierCurveTo(cx + w/2, cy - h, cx + w/2, cy, cx, cy);
+      ctx.bezierCurveTo(cx - w/2, cy, cx - w/2, cy - h, cx, cy - h);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // tie
+      ctx.fillStyle = 'rgba(80,50,20,0.4)';
+      ctx.fillRect(cx - w*0.15, cy - h - s*0.05, w*0.3, s*0.12);
+      return;
+    }
+    // Cloth family — coloured roll
+    if (['cloth','cottonCloth','canvas'].includes(type)) {
+      const ROLL = { cloth:'#9060b0', cottonCloth:'#7898d0', canvas:'#a08c60' };
+      const rw = s*0.55, rh = s*0.3;
+      ctx.fillStyle = ROLL[type] || '#9060b0'; ctx.strokeStyle = 'rgba(40,20,60,0.5)';
+      ctx.fillRect(cx - rw, cy - rh*2, rw*2, rh*2);
+      ctx.strokeRect(cx - rw, cy - rh*2, rw*2, rh*2);
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fillRect(cx - rw, cy - rh*2, rw*2, rh*0.4);
+      ctx.beginPath(); ctx.ellipse(cx, cy - rh*2, rw, rh*0.55, 0, 0, Math.PI*2);
+      ctx.fillStyle = ROLL[type] || '#9060b0'; ctx.fill(); ctx.stroke();
+      return;
+    }
+    // Metal ingot (iron, copper, tin, bronze)
+    if (['iron','copper','tin','bronze'].includes(type)) {
+      const INGOT = { iron:'#607080', copper:'#c86420', tin:'#909898', bronze:'#b08040' };
+      const iw = s*0.9, ih = s*0.38;
+      ctx.fillStyle = INGOT[type]; ctx.strokeStyle = 'rgba(30,30,40,0.6)';
+      ctx.beginPath();
+      ctx.moveTo(cx - iw*0.35, cy - ih); ctx.lineTo(cx + iw*0.35, cy - ih);
+      ctx.lineTo(cx + iw*0.5,  cy);      ctx.lineTo(cx - iw*0.5,  cy);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(cx - iw*0.3, cy - ih, iw*0.6, ih*0.28);
+      return;
+    }
+    // Thread — spool (bobbin)
+    if (type === 'thread') {
+      const sr = s*0.38;
+      ctx.fillStyle = '#e8e0c0'; ctx.strokeStyle = 'rgba(60,50,20,0.5)';
+      ctx.fillRect(cx - sr, cy - sr*0.4, sr*2, sr*0.8); ctx.strokeRect(cx - sr, cy - sr*0.4, sr*2, sr*0.8);
+      ctx.fillStyle = '#d4a040';
+      ctx.beginPath(); ctx.ellipse(cx, cy, sr*0.5, sr*0.28, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, cy - sr*0.4, sr*0.5, sr*0.28, 0, 0, Math.PI*2); ctx.fill();
+      return;
+    }
+    // Rope — coil
+    if (type === 'rope') {
+      const rr = s * 0.38;
+      ctx.strokeStyle = '#c8b074'; ctx.lineWidth = Math.max(1.5, s*0.12);
+      ctx.beginPath(); ctx.arc(cx, cy - rr, rr*0.7, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy - rr, rr*0.35, 0, Math.PI*2); ctx.stroke();
+      return;
+    }
+    // Plank — stacked planks
+    if (type === 'plank') {
+      const pw = s * 1.0, ph = s * 0.22;
+      ctx.fillStyle = '#a07840'; ctx.strokeStyle = 'rgba(40,28,10,0.5)';
+      for (let i = 2; i >= 0; i--) {
+        ctx.fillRect(cx - pw/2 + i*1.5, cy - ph*(i+1), pw, ph);
+        ctx.strokeRect(cx - pw/2 + i*1.5, cy - ph*(i+1), pw, ph);
+      }
+      return;
+    }
+    // Brick — stack of bricks
+    if (type === 'brick') {
+      const bw = s*0.9, bh = s*0.3;
+      ctx.strokeStyle = 'rgba(80,30,20,0.5)';
+      const COLS = ['#c0603c','#b05530','#d06848'];
+      for (let i = 0; i < 3; i++) {
+        ctx.fillStyle = COLS[i]; ctx.fillRect(cx-bw/2, cy-bh*(i+1), bw, bh); ctx.strokeRect(cx-bw/2, cy-bh*(i+1), bw, bh);
+      }
+      return;
+    }
+    // Coal — dark lump
+    if (type === 'coal' || type === 'charcoal') {
+      const R = s*0.4;
+      ctx.fillStyle = type === 'coal' ? '#2c2c2c' : '#3a3a3a';
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath(); ctx.arc(cx, cy - R*0.6, R*0.9, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.beginPath(); ctx.arc(cx - R*0.3, cy - R*0.9, R*0.3, 0, Math.PI*2); ctx.fill();
+      return;
+    }
+    // Tool / Gear
+    if (type === 'tool' || type === 'gear') {
+      const tr = s * 0.4;
+      ctx.fillStyle = type === 'gear' ? '#808090' : '#606870';
+      ctx.strokeStyle = 'rgba(30,30,40,0.6)';
+      ctx.beginPath(); ctx.arc(cx, cy - tr, tr, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#1e2530';
+      ctx.beginPath(); ctx.arc(cx, cy - tr, tr*0.4, 0, Math.PI*2); ctx.fill();
+      return;
+    }
+    // Glass — light blue rhombus
+    if (type === 'glass') {
+      const gR = s*0.44;
+      ctx.fillStyle = 'rgba(130,200,220,0.75)'; ctx.strokeStyle = 'rgba(60,140,170,0.6)';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy-gR*1.1); ctx.lineTo(cx+gR, cy-gR*0.3);
+      ctx.lineTo(cx, cy+gR*0.2); ctx.lineTo(cx-gR, cy-gR*0.3);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      return;
+    }
+    // Leather — brown hide shape
+    if (type === 'leather') {
+      const lr = s*0.42;
+      ctx.fillStyle = '#9c7048'; ctx.strokeStyle = 'rgba(50,25,10,0.5)';
+      ctx.beginPath(); ctx.ellipse(cx, cy-lr*0.6, lr, lr*0.55, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      return;
+    }
+    // Canvas, default crate fallback
+    const ch = s * 0.62;
     ctx.fillStyle = '#c79a5a';
-    ctx.fillRect(cx - s / 2, cy - h, s, h);
+    ctx.fillRect(cx - s / 2, cy - ch, s, ch);
     ctx.fillStyle = '#9c7338';
-    ctx.fillRect(cx - s / 2, cy - h * 0.42, s, h * 0.42);
+    ctx.fillRect(cx - s / 2, cy - ch * 0.42, s, ch * 0.42);
     ctx.strokeStyle = 'rgba(40,28,12,0.6)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(cx - s / 2, cy - h, s, h);
+    ctx.strokeRect(cx - s / 2, cy - ch, s, ch);
   }
 
   // Crop plant sprite: stem growing from the ground, ripe crops get a gold halo.
@@ -538,6 +685,22 @@ export class Renderer {
     ctx.fillStyle = '#e8d2b0';
     ctx.fill();
     ctx.stroke();
+    // Job indicator dot above head
+    const JOB_COLORS = {
+      trade: '#d8a020', haul: '#4080d0', cartHaul: '#40b0c0',
+      farmCrop: '#60b040', harvest: '#a0c830',
+      road: '#e07820', pickupFloor: '#40c0e0',
+    };
+    const jc = JOB_COLORS[w.job];
+    if (jc) {
+      ctx.fillStyle = jc;
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.arc(cx, cy - r * 3.1, r * 0.38, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
     // Goods color map for carried/load display.
     const GOOD_COLOR = {
       wood: '#9c7338', stone: '#9aa0a6', plank: '#a07840', brick: '#c0603c',

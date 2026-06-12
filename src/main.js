@@ -10,6 +10,69 @@ import { sellPrice, buyPrice } from './trade.js';
 import { TRADE_GOODS } from './config.js';
 import { ALL_GOODS_IDS, BUILDING_KINDS } from './buildings.js';
 
+// Panel tooltip content (goods & buildings). Each entry: { en, ja }
+const PANEL_TIPS = {
+  good: {
+    wood:        { en: 'Wood\nHarvest: Logging camp (forest)\nUse: Planks, charcoal, buildings',          ja: '木材\n採取: 伐採場（近くの森林から）\n用途: 板材・木炭の原料、建物建設' },
+    stone:       { en: 'Stone\nHarvest: Stone cutter (stone hill)\nUse: Bricks, glass, buildings',         ja: '石\n採取: 石切り場（近くの石山から）\n用途: レンガ・ガラスの原料、建物建設' },
+    plank:       { en: 'Plank\nMake: Sawmill  wood×2 → 1\nUse: Tools, buildings',                          ja: '板材\n製造: 製材所  wood×2 → 1\n用途: 道具・建物' },
+    brick:       { en: 'Brick\nMake: Kiln  clay×2 → 1\nUse: Buildings',                                    ja: 'レンガ\n製造: 窯  clay×2 → 1\n用途: 建物建設' },
+    clay:        { en: 'Clay\nSource: Clay mine (clay pit)\nUse: Bricks',                                   ja: '粘土\n採掘: 粘土鉱山（粘土層から）\n用途: レンガの原料' },
+    sand:        { en: 'Sand\nSource: Sand mine (sand bar)\nUse: Glass',                                    ja: '砂\n採掘: 砂鉱山（砂地から）\n用途: ガラスの原料' },
+    coal:        { en: 'Coal\nSource: Coal mine (coal vein)\nUse: Smelter fuel',                            ja: '石炭\n採掘: 石炭鉱山（石炭層から）\n用途: 精錬所の燃料' },
+    charcoal:    { en: 'Charcoal\nMake: Charcoal kiln  wood×3 → 1\nUse: Smelter fuel',                     ja: '木炭\n製造: 炭焼き窯  wood×3 → 1\n用途: 精錬所の燃料' },
+    iron:        { en: 'Iron\nMake: Smelter  ironOre+charcoal → 1\nUse: Tools',                             ja: '鉄\n製造: 精錬所  ironOre+charcoal → 1\n用途: 道具の原料' },
+    copper:      { en: 'Copper\nMake: Smelter  copperOre+charcoal → 1\nUse: Bronze',                        ja: '銅\n製造: 精錬所  copperOre+charcoal → 1\n用途: 青銅の原料' },
+    tin:         { en: 'Tin\nMake: Smelter  tinOre+charcoal → 1\nUse: Bronze',                              ja: '錫\n製造: 精錬所  tinOre+charcoal → 1\n用途: 青銅の原料' },
+    bronze:      { en: 'Bronze\nMake: Alloy forge  copper×1+tin×1 → 1\nUse: Gears',                        ja: '青銅\n製造: 合金炉  copper×1+tin×1 → 1\n用途: 歯車の原料' },
+    ironOre:     { en: 'Iron Ore\nSource: Iron mine\nUse: → Iron (Smelter)',                                ja: '鉄鉱石\n採掘: 鉄鉱山\n用途: 鉄の原料（精錬所）' },
+    copperOre:   { en: 'Copper Ore\nSource: Copper mine\nUse: → Copper (Smelter)',                          ja: '銅鉱石\n採掘: 銅鉱山\n用途: 銅の原料（精錬所）' },
+    tinOre:      { en: 'Tin Ore\nSource: Tin mine\nUse: → Tin (Smelter)',                                   ja: '錫鉱石\n採掘: 錫鉱山\n用途: 錫の原料（精錬所）' },
+    rope:        { en: 'Rope\nMake: Rope maker  grain×2 → 1\nUse: Construction, trade',                     ja: 'ロープ\n製造: ロープ工場  grain×2 → 1\n用途: 建設・交易' },
+    cloth:       { en: 'Cloth\nMake: Weavery  grain×3 → 1\nUse: Trade',                                    ja: '布\n製造: 機織り場  grain×3 → 1\n用途: 交易' },
+    cottonCloth: { en: 'Cotton Cloth\nMake: Weavery  thread×2 → 1\nUse: Canvas',                            ja: '綿布\n製造: 機織り場  thread×2 → 1\n用途: キャンバスの原料' },
+    canvas:      { en: 'Canvas\nMake: Weavery  cottonCloth×2 → 1\nUse: High-value trade',                  ja: 'キャンバス\n製造: 機織り場  cottonCloth×2 → 1\n用途: 高価値交易品' },
+    thread:      { en: 'Thread\nMake: Spinning mill  cotton×1 → 1\nUse: Cotton cloth',                     ja: '糸\n製造: 紡績工場  cotton×1 → 1\n用途: 綿布の原料' },
+    cotton:      { en: 'Cotton\nSource: Ranch (pasture)\nUse: → Thread (Spinning mill)',                   ja: '綿花\n採取: 牧場（牧草地から）\n用途: 糸の原料（紡績工場）' },
+    grain:       { en: 'Grain\nSource: Farm (crop field)\nUse: Rope, flour, cloth',                         ja: '穀物\n栽培: 農場（農地から）\n用途: ロープ・小麦粉・布の原料' },
+    wheat:       { en: 'Wheat\nSource: Farm\nUse: → Flour (Windmill)',                                      ja: '小麦\n栽培: 農場\n用途: 小麦粉の原料（風車）' },
+    flour:       { en: 'Flour\nMake: Windmill  grain×2 → 1\nUse: Food, trade',                             ja: '小麦粉\n製造: 風車  grain×2 → 1\n用途: 食料・交易' },
+    potato:      { en: 'Potato\nSource: Farm\nUse: Food, trade',                                            ja: 'ジャガイモ\n栽培: 農場\n用途: 食料・交易' },
+    turnip:      { en: 'Turnip\nSource: Farm\nUse: Food, trade',                                            ja: 'カブ\n栽培: 農場\n用途: 食料・交易' },
+    rice:        { en: 'Rice\nSource: Farm (paddy field)\nUse: Food, trade',                                ja: '米\n栽培: 農場（水田）\n用途: 食料・交易' },
+    leather:     { en: 'Leather\nSource: Ranch (pasture)\nUse: Trade',                                      ja: '皮革\n採取: 牧場（牧草地から）\n用途: 交易' },
+    glass:       { en: 'Glass\nMake: Kiln  sand×3 → 1\nUse: Trade',                                        ja: 'ガラス\n製造: 窯  sand×3 → 1\n用途: 交易' },
+    tool:        { en: 'Tool\nMake: Smithy  iron×2+plank×1 → 1\nUse: Gears, trade',                        ja: '道具\n製造: 鍛冶屋  iron×2+plank×1 → 1\n用途: 歯車の原料・交易' },
+    gear:        { en: 'Gear\nMake: Precision workshop  bronze×2+tool×1 → 1\nUse: High-value trade',        ja: '歯車\n製造: 精密工房  bronze×2+tool×1 → 1\n用途: 高価値交易品' },
+    currency:    { en: 'Currency (¥)\nEarned from selling goods at trade posts\nSpent on buying goods',     ja: '通貨（¥）\n交易所での売却で獲得\n物品購入に使用' },
+    wheelbarrow: { en: 'Wheelbarrow\nAuto-attached to cart workers\nNo manual action',                      ja: '手押し車\n荷台ワーカーに自動付与\n手動操作不要' },
+  },
+  build: {
+    warehouse:          { en: 'Warehouse\nStores all goods (capacity limited)\nDelivery hub — haul workers bring goods here',                     ja: '倉庫\n全アイテムを保管（容量制限あり）\n配送の起点・終点として機能' },
+    loggingCamp:        { en: 'Logging Camp\nHarvests wood from nearby forests\nOutput: wood',                                                      ja: '伐採場\n近くの森林から木材を採取\n産出: wood' },
+    stoneCutter:        { en: 'Stone Cutter\nQuarries stone from stone hills\nOutput: stone',                                                       ja: '石切り場\n近くの石山から石を採取\n産出: stone' },
+    clayMine:           { en: 'Clay Mine\nExtracts clay from clay pits\nOutput: clay',                                                              ja: '粘土鉱山\n粘土層から粘土を採掘\n産出: clay' },
+    sandMine:           { en: 'Sand Mine\nDigs sand from sand bars\nOutput: sand',                                                                  ja: '砂鉱山\n砂地から砂を採掘\n産出: sand' },
+    coalMine:           { en: 'Coal Mine\nMines coal from coal veins\nOutput: coal',                                                                ja: '石炭鉱山\n石炭層から石炭を採掘\n産出: coal' },
+    farm:               { en: 'Farm\nCultivates crops from adjacent fields\nOutput: grain / wheat / potato / turnip / rice',                        ja: '農場\n農地から作物を栽培・収穫\n産出: grain / wheat / potato / turnip / rice' },
+    ironMine:           { en: 'Iron Mine\nMines iron ore\nOutput: ironOre',                                                                         ja: '鉄鉱山\n鉄鉱脈から鉄鉱石を採掘\n産出: ironOre' },
+    copperMine:         { en: 'Copper Mine\nMines copper ore\nOutput: copperOre',                                                                   ja: '銅鉱山\n銅鉱脈から銅鉱石を採掘\n産出: copperOre' },
+    tinMine:            { en: 'Tin Mine\nMines tin ore\nOutput: tinOre',                                                                            ja: '錫鉱山\n錫鉱脈から錫鉱石を採掘\n産出: tinOre' },
+    ranch:              { en: 'Ranch\nRaises livestock on pastures\nOutput: leather, cotton',                                                       ja: '牧場\n牧草地で家畜を育てる\n産出: leather, cotton' },
+    sawmill:            { en: 'Sawmill\nwood×2 → plank×1\nProcesses timber into planks',                                                           ja: '製材所\nwood×2 → plank×1\n材木を板材に加工' },
+    charcoalKiln:       { en: 'Charcoal Kiln\nwood×3 → charcoal×1\nProduces smelter fuel',                                                         ja: '炭焼き窯\nwood×3 → charcoal×1\n精錬所の燃料を生産' },
+    kiln:               { en: 'Kiln\nclay×2 → brick×1\nsand×3 → glass×1',                                                                          ja: '窯\nclay×2 → brick×1\nsand×3 → glass×1' },
+    smelter:            { en: 'Smelter\nironOre+charcoal → iron\ncopperOre+charcoal → copper\ntinOre+charcoal → tin',                               ja: '精錬所\nironOre+charcoal → iron\ncopperOre+charcoal → copper\ntinOre+charcoal → tin' },
+    alloyForge:         { en: 'Alloy Forge\ncopper×1 + tin×1 → bronze×1\nRequires both metals',                                                    ja: '合金炉\ncopper×1 + tin×1 → bronze×1\n両金属が必要' },
+    ropeMaker:          { en: 'Rope Maker\ngrain×2 → rope×1',                                                                                       ja: 'ロープ工場\ngrain×2 → rope×1' },
+    windmill:           { en: 'Windmill\ngrain×2 → flour×1',                                                                                        ja: '風車\ngrain×2 → flour×1' },
+    weavery:            { en: 'Weavery\ngrain×3 → cloth×1\nthread×2 → cottonCloth×1\ncottonCloth×2 → canvas×1',                                    ja: '機織り場\ngrain×3 → cloth×1\nthread×2 → cottonCloth×1\ncottonCloth×2 → canvas×1' },
+    smithy:             { en: 'Smithy\niron×2 + plank×1 → tool×1',                                                                                 ja: '鍛冶屋\niron×2 + plank×1 → tool×1' },
+    precisionWorkshop:  { en: 'Precision Workshop\nbronze×2 + tool×1 → gear×1',                                                                     ja: '精密工房\nbronze×2 + tool×1 → gear×1' },
+    spinningMill:       { en: 'Spinning Mill\ncotton×1 → thread×1',                                                                                 ja: '紡績工場\ncotton×1 → thread×1' },
+  },
+};
+
 const canvas = document.getElementById('map');
 const game = new Game(canvas);
 window.game = game; // debugging / headless checks
@@ -322,15 +385,15 @@ function renderTeamsPanel() {
 
     let detailsHtml = '';
     if (isExpanded) {
-      const currCell = `<span class="stat-cell"><span class="stat-key">¥</span><b>${tm.stock.currency || 0}</b></span>`;
+      const currCell = `<span class="stat-cell stat-cell-currency" data-tip-kind="good" data-tip-key="currency"><button type="button" class="graph-btn" data-team="${tm.id}" data-type="goods" data-key="currency">¥</button><b>${tm.stock.currency || 0}</b></span>`;
       const goodCells = ALL_GOODS_IDS
         .filter(g => (tm.stock[g] || 0) > 0)
-        .map(g => `<span class="stat-cell"><button type="button" class="graph-btn" data-team="${tm.id}" data-type="goods" data-key="${g}">${t('good.' + g)}</button><b>${tm.stock[g]}</b></span>`)
+        .map(g => `<span class="stat-cell" data-tip-kind="good" data-tip-key="${g}"><button type="button" class="graph-btn" data-team="${tm.id}" data-type="goods" data-key="${g}">${t('good.' + g)}</button><b>${tm.stock[g]}</b></span>`)
         .join('');
       const buildCounts = tm.buildings.reduce((acc, b) => { acc[b.kind] = (acc[b.kind] || 0) + 1; return acc; }, {});
       const buildCells = BUILDING_KINDS
         .filter(k => buildCounts[k])
-        .map(k => `<span class="stat-cell"><button type="button" class="graph-btn" data-team="${tm.id}" data-type="builds" data-key="${k}">${t('build.' + k)}</button><b>${buildCounts[k]}</b></span>`)
+        .map(k => `<span class="stat-cell" data-tip-kind="build" data-tip-key="${k}"><button type="button" class="graph-btn" data-team="${tm.id}" data-type="builds" data-key="${k}">${t('build.' + k)}</button><b>${buildCounts[k]}</b></span>`)
         .join('');
       detailsHtml =
         `<div class="team-details">` +
@@ -404,14 +467,14 @@ function renderGlobalPanel() {
   if (sig === globalSig) return;
   globalSig = sig;
 
-  const currCell = `<span class="stat-cell"><span class="stat-key">¥</span><b>${totalGoods['currency'] || 0}</b></span>`;
+  const currCell = `<span class="stat-cell stat-cell-currency" data-tip-kind="good" data-tip-key="currency"><button type="button" class="graph-btn" data-team="-1" data-type="goods" data-key="currency">¥</button><b>${totalGoods['currency'] || 0}</b></span>`;
   const goodCells = ALL_GOODS_IDS
     .filter(g => totalGoods[g] > 0)
-    .map(g => `<span class="stat-cell"><button type="button" class="graph-btn" data-team="-1" data-type="goods" data-key="${g}">${t('good.' + g)}</button><b>${totalGoods[g]}</b></span>`)
+    .map(g => `<span class="stat-cell" data-tip-kind="good" data-tip-key="${g}"><button type="button" class="graph-btn" data-team="-1" data-type="goods" data-key="${g}">${t('good.' + g)}</button><b>${totalGoods[g]}</b></span>`)
     .join('');
   const buildCells = BUILDING_KINDS
     .filter(k => totalBuilds[k])
-    .map(k => `<span class="stat-cell"><button type="button" class="graph-btn" data-team="-1" data-type="builds" data-key="${k}">${t('build.' + k)}</button><b>${totalBuilds[k]}</b></span>`)
+    .map(k => `<span class="stat-cell" data-tip-kind="build" data-tip-key="${k}"><button type="button" class="graph-btn" data-team="-1" data-type="builds" data-key="${k}">${t('build.' + k)}</button><b>${totalBuilds[k]}</b></span>`)
     .join('');
 
   globalPanelEl.innerHTML =
@@ -438,10 +501,10 @@ function drawGraph(points, label) {
   const ctx = graphCanvas.getContext('2d');
   const W = graphCanvas.width, H = graphCanvas.height;
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#1e2530';
+  ctx.fillStyle = '#1a2030';
   ctx.fillRect(0, 0, W, H);
 
-  const pad = { l: 32, r: 8, t: 18, b: 20 };
+  const pad = { l: 36, r: 10, t: 20, b: 22 };
 
   if (points.length < 2) {
     ctx.fillStyle = '#93a0b4';
@@ -452,40 +515,82 @@ function drawGraph(points, label) {
   }
 
   const maxV = Math.max(1, ...points.map(p => p.v));
+  const minV = 0;
   const plotW = W - pad.l - pad.r;
   const plotH = H - pad.t - pad.b;
+  const px = (i) => pad.l + (i / (points.length - 1)) * plotW;
+  const py = (v) => pad.t + (1 - (v - minV) / (maxV - minV)) * plotH;
 
-  ctx.strokeStyle = '#28313f';
+  // Horizontal grid lines at 0%, 25%, 50%, 75%, 100%
   ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(pad.l, pad.t); ctx.lineTo(W - pad.r, pad.t);
-  ctx.moveTo(pad.l, pad.t + plotH); ctx.lineTo(W - pad.r, pad.t + plotH);
-  ctx.stroke();
+  [0, 0.25, 0.5, 0.75, 1].forEach(frac => {
+    const gy = pad.t + (1 - frac) * plotH;
+    ctx.strokeStyle = frac === 0 || frac === 1 ? 'rgba(80,100,130,0.5)' : 'rgba(60,75,100,0.35)';
+    ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(W - pad.r, gy); ctx.stroke();
+    if (frac > 0 && frac < 1) {
+      ctx.fillStyle = '#5d6e82';
+      ctx.font = '9px system-ui';
+      ctx.textAlign = 'right';
+      ctx.fillText(Math.round(maxV * frac), pad.l - 3, gy + 3);
+    }
+  });
 
-  ctx.strokeStyle = '#5fae6b';
-  ctx.lineWidth = 1.5;
+  // Filled area under the curve
   ctx.beginPath();
   points.forEach((p, i) => {
-    const x = pad.l + (i / (points.length - 1)) * plotW;
-    const y = pad.t + (1 - p.v / maxV) * plotH;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    if (i === 0) ctx.moveTo(px(i), py(p.v)); else ctx.lineTo(px(i), py(p.v));
+  });
+  ctx.lineTo(px(points.length - 1), pad.t + plotH);
+  ctx.lineTo(px(0), pad.t + plotH);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + plotH);
+  grad.addColorStop(0, 'rgba(95,174,107,0.38)');
+  grad.addColorStop(1, 'rgba(95,174,107,0.04)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.strokeStyle = '#5fae6b';
+  ctx.lineWidth = 1.8;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    if (i === 0) ctx.moveTo(px(i), py(p.v)); else ctx.lineTo(px(i), py(p.v));
   });
   ctx.stroke();
 
-  ctx.fillStyle = '#93a0b4';
-  ctx.font = '10px system-ui';
-  ctx.textAlign = 'right';
-  ctx.fillText(maxV, pad.l - 2, pad.t + 3);
-  ctx.fillText('0', pad.l - 2, pad.t + plotH + 3);
-  ctx.textAlign = 'left';
-  ctx.fillText(`t=${points[0].t}s`, pad.l, H - 2);
-  ctx.textAlign = 'right';
-  ctx.fillText(`t=${points[points.length - 1].t}s`, W - pad.r, H - 2);
+  // End-point dot
+  const last = points[points.length - 1];
+  ctx.fillStyle = '#5fae6b';
+  ctx.strokeStyle = '#1a2030';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(px(points.length - 1), py(last.v), 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
 
+  // Axis labels
+  ctx.fillStyle = '#7a8fa8';
+  ctx.font = '9px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(maxV, pad.l - 3, pad.t + 3);
+  ctx.fillText('0', pad.l - 3, pad.t + plotH + 3);
+  ctx.textAlign = 'left';
+  ctx.fillText(`t=${points[0].t}s`, pad.l, H - 3);
+  ctx.textAlign = 'right';
+  ctx.fillText(`t=${points[points.length - 1].t}s`, W - pad.r, H - 3);
+
+  // Current value
+  ctx.fillStyle = '#c8e0b8';
+  ctx.font = 'bold 10px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(last.v, W - pad.r, pad.t - 4);
+
+  // Title
   ctx.textAlign = 'left';
   ctx.fillStyle = '#e6e9ef';
   ctx.font = '11px system-ui';
-  ctx.fillText(label, pad.l, 12);
+  ctx.fillText(label, pad.l, 13);
 }
 
 function showGraph(label, teamId, type, key) {
@@ -733,6 +838,45 @@ function updateTooltip(ev) {
   tooltip.textContent = `(${x}, ${y}) Lv${tile.level} · ${describeTile(tile)}`;
 }
 canvas.addEventListener('pointerleave', () => { if (tooltip) tooltip.hidden = true; game.hover = null; });
+
+// --- Panel hover tooltip (goods & buildings stat-cells) -------------------
+const panelTip = document.createElement('div');
+panelTip.id = 'panel-tip';
+panelTip.className = 'panel-tip';
+panelTip.hidden = true;
+document.body.appendChild(panelTip);
+
+let _ptTarget = null;
+document.addEventListener('mouseover', (e) => {
+  const cell = e.target.closest('[data-tip-kind]');
+  if (cell === _ptTarget) return;
+  _ptTarget = cell;
+  if (!cell) { panelTip.hidden = true; return; }
+  const kind = cell.dataset.tipKind;
+  const key = cell.dataset.tipKey;
+  const entry = PANEL_TIPS[kind]?.[key];
+  if (!entry) { panelTip.hidden = true; return; }
+  const text = entry[getLang()] || entry.en;
+  const lines = text.split('\n');
+  panelTip.innerHTML = `<b>${lines[0]}</b>` + lines.slice(1).map(l => `<span>${l}</span>`).join('');
+  panelTip.hidden = false;
+});
+document.addEventListener('mousemove', (e) => {
+  if (!panelTip.hidden) {
+    const x = e.clientX + 14, y = e.clientY + 14;
+    const rw = panelTip.offsetWidth || 200;
+    panelTip.style.left = `${Math.min(x, window.innerWidth - rw - 8)}px`;
+    panelTip.style.top  = `${y}px`;
+  }
+});
+document.addEventListener('mouseout', (e) => {
+  if (!e.relatedTarget || !e.relatedTarget.closest('[data-tip-kind]')) {
+    if (_ptTarget && !_ptTarget.contains(e.relatedTarget)) {
+      _ptTarget = null;
+      panelTip.hidden = true;
+    }
+  }
+});
 
 // --- boot -----------------------------------------------------------------
 

@@ -96,6 +96,7 @@ export class Game {
     this._historyTimer = 0;
     this._history = [];
     this.cropTiles = [];  // {x, y} of all planted crop tiles
+    this._floorReserved = new Set(); // "x,y" keys reserved by pickupFloor workers
 
     this.clock = 0;
     this.environment = null;
@@ -145,6 +146,7 @@ export class Game {
     this._drainTimer = 0;
     this._historyTimer = 0;
     this._history = [];
+    this._floorReserved = new Set();
 
     // Scatter natural resources on empty land (seeded).
     this._scatterFeatures(FOREST_COUNT,      createForest);
@@ -721,6 +723,7 @@ export class Game {
         const tx = cx + dx, ty = cy + dy;
         if (tx < 0 || ty < 0 || tx >= this.map.cols || ty >= this.map.rows) continue;
         if (!this.map.tiles[ty][tx].item) continue;
+        if (this._floorReserved.has(`${tx},${ty}`)) continue; // already claimed
         const d = Math.abs(dx) + Math.abs(dy);
         if (d < bestD) { bestD = d; best = { x: tx, y: ty }; }
       }
@@ -729,7 +732,8 @@ export class Game {
   }
 
   _startPickupFloor(worker, pos) {
-    this._endJob(worker);
+    this._endJob(worker); // releases any prior reservation via _endJob
+    this._floorReserved.add(`${pos.x},${pos.y}`);
     worker.job = 'pickupFloor';
     worker.haul = { phase: 'toItem', itemX: pos.x, itemY: pos.y };
     this._routeTo(worker, pos.x, pos.y);
@@ -818,6 +822,9 @@ export class Game {
   }
 
   _endJob(worker) {
+    if (worker.job === 'pickupFloor' && worker.haul) {
+      this._floorReserved.delete(`${worker.haul.itemX},${worker.haul.itemY}`);
+    }
     worker.job = null;
     worker.phase = null;
     worker.resTile = null;
