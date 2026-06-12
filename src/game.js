@@ -33,6 +33,7 @@ import {
   WAREHOUSE_AUTO_CAP,
   PROC_INTERVAL,
   PROC_OUTPUT_CAP,
+  HISTORY_INTERVAL,
 } from './config.js';
 import { mulberry32 } from './core/rng.js';
 import { generateMap, mapStats } from './map/mapGenerator.js';
@@ -86,6 +87,8 @@ export class Game {
     this.tradePosts = [];
     this._rng = null;     // seeded RNG for deterministic placement
     this._drainTimer = 0;
+    this._historyTimer = 0;
+    this._history = [];
 
     this.clock = 0;
     this.environment = null;
@@ -132,6 +135,8 @@ export class Game {
     this.teams = [];
     this.workers = [];
     this._drainTimer = 0;
+    this._historyTimer = 0;
+    this._history = [];
 
     // Scatter natural resources on empty land (seeded).
     this._scatterFeatures(FOREST_COUNT,      createForest);
@@ -524,6 +529,27 @@ export class Game {
 
     // Processing buildings convert goods from team.stock on their own timer.
     this._tickProcessors(simDt);
+
+    // Record a history snapshot for time-series graphs.
+    this._historyTimer += simDt;
+    if (this._historyTimer >= HISTORY_INTERVAL) {
+      this._historyTimer -= HISTORY_INTERVAL;
+      this._recordHistory();
+    }
+  }
+
+  _recordHistory() {
+    const snap = {
+      t: Math.round(this.clock),
+      teams: this.teams.map(tm => ({
+        goods: { ...tm.stock },
+        builds: tm.buildings.reduce((acc, b) => {
+          acc[b.kind] = (acc[b.kind] || 0) + 1; return acc;
+        }, {}),
+      })),
+    };
+    this._history.push(snap);
+    if (this._history.length > 200) this._history.shift();
   }
 
   // Fallback drain for teams with fewer than 3 workers (no dedicated hauler).

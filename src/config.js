@@ -170,6 +170,8 @@ export const WAREHOUSE_AUTO_CAP = 4;
 
 // Processing buildings: seconds between one conversion cycle per building.
 export const PROC_INTERVAL = 8;
+// How often (sim-sec) a history snapshot is recorded for time-series graphs.
+export const HISTORY_INTERVAL = 30;
 // A processing building stops producing an output once the team treasury
 // holds this many units of that good (prevents runaway over-production).
 export const PROC_OUTPUT_CAP = 50;

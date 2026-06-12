@@ -8,6 +8,7 @@ import { TileType } from './map/tile.js';
 import { teamLetter, SCRIPT_IDS } from './teams.js';
 import { sellPrice, buyPrice } from './trade.js';
 import { TRADE_GOODS } from './config.js';
+import { ALL_GOODS_IDS, BUILDING_KINDS } from './buildings.js';
 
 const canvas = document.getElementById('map');
 const game = new Game(canvas);
@@ -31,10 +32,16 @@ const buildHintEl = $('build-hint');
 const teamsPanelEl = $('teams-panel');
 const tradePanelEl = $('trade-panel');
 const tradeTeamLabel = $('trade-team-label');
+const globalPanelEl = $('global-panel');
+const graphModal = $('graph-modal');
+const graphCanvas = $('graph-canvas');
+const graphTitleEl = $('graph-modal-title');
 
 let started = false;   // becomes true after the first Generate
 let buildTool = null;  // null = inspect; else 'warehouse'|'loggingCamp'|'stoneCutter'
 let activeTeam = 0;    // team the build tool places for
+
+const expandedTeams = new Set(); // team IDs with details expanded
 
 // --- panels ---------------------------------------------------------------
 
@@ -119,6 +126,7 @@ function refreshPanels() {
   updateEnvPanel();
   updateTeamSummary();
   renderTeamsPanel();
+  renderGlobalPanel();
   renderTradePanel();
   updateLegend();
   updatePausedBadge();
@@ -176,7 +184,7 @@ function applyLang(lang) {
   setActive(langsEl, 'data-lang', lang);
   setActive($('start-langs'), 'data-lang', lang);
   // The dynamic panels embed translated text — force them to rebuild.
-  teamsSig = tradeSig = null;
+  teamsSig = tradeSig = globalSig = null;
   if (buildHintEl && !buildHintEl.classList.contains('warn')) buildHintEl.textContent = buildHintIdle();
   refreshPanels();
 }
@@ -225,7 +233,8 @@ function generate() {
   game.newMap(seed, { teamCount, workersPerTeam });
   if (startScreen) startScreen.hidden = true;
   activeTeam = Math.min(activeTeam, teamCount - 1);
-  teamsSig = tradeSig = null;
+  teamsSig = tradeSig = globalSig = null;
+  expandedTeams.clear();
   renderTeamSelect();
   if (tradeTeamLabel) tradeTeamLabel.textContent = teamLetter(activeTeam);
   if (buildHintEl) buildHintEl.textContent = buildHintIdle();
@@ -273,7 +282,7 @@ function setActiveTeam(i) {
   setActive(teamSelectEl, 'data-team', activeTeam);
   if (tradeTeamLabel) tradeTeamLabel.textContent = teamLetter(activeTeam);
   if (buildHintEl) buildHintEl.textContent = buildHintIdle();
-  teamsSig = tradeSig = null; // force panel refresh
+  teamsSig = tradeSig = globalSig = null; // force panel refresh
 }
 
 // --- Teams panel (treasury + auto-script control) -------------------------
@@ -286,22 +295,59 @@ function teamHauling(tm) {
 let teamsSig = null;
 function renderTeamsPanel() {
   if (!teamsPanelEl || !game.teams.length) return;
+
+  // Include expanded teams' stock values in sig so panel refreshes as goods change.
+  const expandedStockSig = Array.from(expandedTeams).map(id => {
+    const tm = game.teams[id];
+    if (!tm) return '';
+    return id + ':' + ALL_GOODS_IDS.map(g => tm.stock[g] || 0).join(',') +
+      ':b' + tm.buildings.length;
+  }).join('|');
+
   const sig = game.teams.map((tm) =>
-    `${tm.id}:${tm.scriptId}:${tm.scriptRunning}:${tm.stock.currency}:${tm.stock.wood}:${tm.stock.stone}:${teamHauling(tm) ? 'H' + tm.tradeQueue.length : '0'}:${activeTeam}`).join('|');
+    `${tm.id}:${tm.scriptId}:${tm.scriptRunning}:${tm.stock.currency}:${tm.stock.wood}:${tm.stock.stone}:${teamHauling(tm) ? 'H' + tm.tradeQueue.length : '0'}:${activeTeam}`
+  ).join('|') + '|exp:' + Array.from(expandedTeams).sort().join(',') + ':' + expandedStockSig;
+
   if (sig === teamsSig) return;
   teamsSig = sig;
+
   teamsPanelEl.innerHTML = game.teams.map((tm) => {
     const scripts = SCRIPT_IDS.map((sid) =>
       `<button type="button" data-team="${tm.id}" data-script="${sid}" class="mini${tm.scriptId === sid ? ' active' : ''}">${t('script.' + sid)}</button>`).join('');
     const run = `<button type="button" data-team="${tm.id}" data-run="1" class="mini${tm.scriptRunning ? ' active' : ''}">${tm.scriptRunning ? t('state.running') : t('state.stopped')}</button>`;
     const sel = tm.id === activeTeam ? ' team-row-active' : '';
     const haul = teamHauling(tm) ? ` <span class="haul">🚚${tm.tradeQueue.length ? '+' + tm.tradeQueue.length : ''}</span>` : '';
+    const isExpanded = expandedTeams.has(tm.id);
+    const expandBtn = `<button type="button" class="mini team-expand" data-expand="${tm.id}">${isExpanded ? '▼' : '▶'}</button>`;
+
+    let detailsHtml = '';
+    if (isExpanded) {
+      const currCell = `<span class="stat-cell"><span class="stat-key">¥</span><b>${tm.stock.currency || 0}</b></span>`;
+      const goodCells = ALL_GOODS_IDS
+        .filter(g => (tm.stock[g] || 0) > 0)
+        .map(g => `<span class="stat-cell"><button type="button" class="graph-btn" data-team="${tm.id}" data-type="goods" data-key="${g}">${t('good.' + g)}</button><b>${tm.stock[g]}</b></span>`)
+        .join('');
+      const buildCounts = tm.buildings.reduce((acc, b) => { acc[b.kind] = (acc[b.kind] || 0) + 1; return acc; }, {});
+      const buildCells = BUILDING_KINDS
+        .filter(k => buildCounts[k])
+        .map(k => `<span class="stat-cell"><button type="button" class="graph-btn" data-team="${tm.id}" data-type="builds" data-key="${k}">${t('build.' + k)}</button><b>${buildCounts[k]}</b></span>`)
+        .join('');
+      detailsHtml =
+        `<div class="team-details">` +
+        `<div class="stat-section-label">${t('ui.goods')}</div>` +
+        `<div class="stat-grid">${currCell}${goodCells || '<span class="stat-empty">—</span>'}</div>` +
+        `<div class="stat-section-label">${t('ui.buildings')}</div>` +
+        `<div class="stat-grid">${buildCells || '<span class="stat-empty">—</span>'}</div>` +
+        `</div>`;
+    }
+
     return (
       `<div class="team-row${sel}" data-team="${tm.id}">` +
       `<button type="button" class="team-pick" data-pick="${tm.id}" style="background:${tm.color.fill}">${teamLetter(tm.id)}</button>` +
       `<span class="team-stock">¥${tm.stock.currency} ${t('good.wood')}${tm.stock.wood} ${t('good.stone')}${tm.stock.stone}${haul}</span>` +
-      `<span class="team-ctrls">${scripts}${run}</span>` +
-      `</div>`
+      `<span class="team-ctrls">${scripts}${run}${expandBtn}</span>` +
+      `</div>` +
+      detailsHtml
     );
   }).join('');
 }
@@ -316,7 +362,152 @@ if (teamsPanelEl) {
       const id = Number(rBtn.dataset.team);
       game.setScriptRunning(id, !game.teams[id].scriptRunning);
       teamsSig = null; renderTeamsPanel();
+      return;
     }
+    const expBtn = ev.target.closest('button[data-expand]');
+    if (expBtn) {
+      const id = Number(expBtn.dataset.expand);
+      if (expandedTeams.has(id)) expandedTeams.delete(id); else expandedTeams.add(id);
+      teamsSig = null; renderTeamsPanel();
+      return;
+    }
+    const gBtn = ev.target.closest('button.graph-btn[data-type]');
+    if (gBtn) {
+      showGraph(
+        `${teamLetter(Number(gBtn.dataset.team))} · ${gBtn.dataset.type === 'goods' ? t('good.' + gBtn.dataset.key) : t('build.' + gBtn.dataset.key)}`,
+        Number(gBtn.dataset.team), gBtn.dataset.type, gBtn.dataset.key,
+      );
+    }
+  });
+}
+
+// --- Global summary panel -------------------------------------------------
+
+let globalSig = null;
+function renderGlobalPanel() {
+  if (!globalPanelEl || !game.teams || !game.teams.length) return;
+
+  const totalGoods = {};
+  const totalBuilds = {};
+  for (const tm of game.teams) {
+    totalGoods['currency'] = (totalGoods['currency'] || 0) + (tm.stock.currency || 0);
+    for (const g of ALL_GOODS_IDS) {
+      totalGoods[g] = (totalGoods[g] || 0) + (tm.stock[g] || 0);
+    }
+    for (const b of tm.buildings) {
+      totalBuilds[b.kind] = (totalBuilds[b.kind] || 0) + 1;
+    }
+  }
+
+  const sig = ALL_GOODS_IDS.map(g => totalGoods[g] || 0).join(',') + '|' +
+    BUILDING_KINDS.map(k => totalBuilds[k] || 0).join(',') + '|' + (totalGoods['currency'] || 0);
+  if (sig === globalSig) return;
+  globalSig = sig;
+
+  const currCell = `<span class="stat-cell"><span class="stat-key">¥</span><b>${totalGoods['currency'] || 0}</b></span>`;
+  const goodCells = ALL_GOODS_IDS
+    .filter(g => totalGoods[g] > 0)
+    .map(g => `<span class="stat-cell"><button type="button" class="graph-btn" data-team="-1" data-type="goods" data-key="${g}">${t('good.' + g)}</button><b>${totalGoods[g]}</b></span>`)
+    .join('');
+  const buildCells = BUILDING_KINDS
+    .filter(k => totalBuilds[k])
+    .map(k => `<span class="stat-cell"><button type="button" class="graph-btn" data-team="-1" data-type="builds" data-key="${k}">${t('build.' + k)}</button><b>${totalBuilds[k]}</b></span>`)
+    .join('');
+
+  globalPanelEl.innerHTML =
+    `<div class="stat-section-label">${t('ui.goods')}</div>` +
+    `<div class="stat-grid">${currCell}${goodCells || '<span class="stat-empty">—</span>'}</div>` +
+    `<div class="stat-section-label">${t('ui.buildings')}</div>` +
+    `<div class="stat-grid">${buildCells || '<span class="stat-empty">—</span>'}</div>`;
+}
+if (globalPanelEl) {
+  globalPanelEl.addEventListener('click', (ev) => {
+    const gBtn = ev.target.closest('button.graph-btn[data-type]');
+    if (!gBtn) return;
+    showGraph(
+      `${t('panel.globalStats')} · ${gBtn.dataset.type === 'goods' ? t('good.' + gBtn.dataset.key) : t('build.' + gBtn.dataset.key)}`,
+      -1, gBtn.dataset.type, gBtn.dataset.key,
+    );
+  });
+}
+
+// --- Time-series graph modal ----------------------------------------------
+
+function drawGraph(points, label) {
+  if (!graphCanvas) return;
+  const ctx = graphCanvas.getContext('2d');
+  const W = graphCanvas.width, H = graphCanvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#1e2530';
+  ctx.fillRect(0, 0, W, H);
+
+  const pad = { l: 32, r: 8, t: 18, b: 20 };
+
+  if (points.length < 2) {
+    ctx.fillStyle = '#93a0b4';
+    ctx.font = '11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('No data yet (30 s intervals)', W / 2, H / 2 + 4);
+    return;
+  }
+
+  const maxV = Math.max(1, ...points.map(p => p.v));
+  const plotW = W - pad.l - pad.r;
+  const plotH = H - pad.t - pad.b;
+
+  ctx.strokeStyle = '#28313f';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t); ctx.lineTo(W - pad.r, pad.t);
+  ctx.moveTo(pad.l, pad.t + plotH); ctx.lineTo(W - pad.r, pad.t + plotH);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#5fae6b';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    const x = pad.l + (i / (points.length - 1)) * plotW;
+    const y = pad.t + (1 - p.v / maxV) * plotH;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = '#93a0b4';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(maxV, pad.l - 2, pad.t + 3);
+  ctx.fillText('0', pad.l - 2, pad.t + plotH + 3);
+  ctx.textAlign = 'left';
+  ctx.fillText(`t=${points[0].t}s`, pad.l, H - 2);
+  ctx.textAlign = 'right';
+  ctx.fillText(`t=${points[points.length - 1].t}s`, W - pad.r, H - 2);
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#e6e9ef';
+  ctx.font = '11px system-ui';
+  ctx.fillText(label, pad.l, 12);
+}
+
+function showGraph(label, teamId, type, key) {
+  if (!game._history) return;
+  const points = game._history.map(snap => {
+    let v;
+    if (teamId < 0) {
+      v = snap.teams.reduce((s, tm) => s + (type === 'goods' ? (tm.goods[key] || 0) : (tm.builds[key] || 0)), 0);
+    } else {
+      const tm = snap.teams[teamId];
+      v = tm ? (type === 'goods' ? (tm.goods[key] || 0) : (tm.builds[key] || 0)) : 0;
+    }
+    return { t: snap.t, v };
+  });
+  if (graphTitleEl) graphTitleEl.textContent = label;
+  drawGraph(points, label);
+  if (graphModal) graphModal.hidden = false;
+}
+
+if ($('graph-modal-close')) {
+  $('graph-modal-close').addEventListener('click', () => {
+    if (graphModal) graphModal.hidden = true;
   });
 }
 

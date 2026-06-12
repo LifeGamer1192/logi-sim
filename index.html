@@ -94,6 +94,11 @@
           </details>
 
           <details class="control-group" open>
+            <summary class="label" data-i18n="panel.globalStats">Global / All Teams</summary>
+            <div id="global-panel"></div>
+          </details>
+
+          <details class="control-group" open>
             <summary class="label" data-i18n="ui.trade">Trade / Posts</summary>
             <p class="reason-label"><span data-i18n="ui.activeTeam">Active team</span>: <b id="trade-team-label">A</b></p>
             <div id="trade-panel" class="trade-panel"></div>
@@ -185,6 +190,15 @@
           </details>
         </aside>
       </main>
+    </div>
+
+    <!-- Time-series graph modal -->
+    <div id="graph-modal" class="graph-modal" hidden>
+      <div class="graph-modal-header">
+        <span id="graph-modal-title"></span>
+        <button id="graph-modal-close" type="button">×</button>
+      </div>
+      <canvas id="graph-canvas" width="300" height="140"></canvas>
     </div>
 
     <script type="module" src="/src/main.js"></script>
