@@ -21,6 +21,8 @@ import {
   HARVEST_NEAR,
   BUILD_COST,
   DRAIN_INTERVAL,
+  BUILD_AUTO_INTERVAL,
+  WAREHOUSE_AUTO_CAP,
 } from './config.js';
 import { mulberry32 } from './core/rng.js';
 import { generateMap, mapStats } from './map/mapGenerator.js';
@@ -33,7 +35,7 @@ import { createTeam, clampTeamCount, defaultScriptFor } from './teams.js';
 import { Worker } from './entities/worker.js';
 import { createItem } from './items.js';
 import { createForest, createStoneHill, harvestFeature, regenFeature, canHarvest } from './features.js';
-import { createBuilding, isFull, deposit } from './buildings.js';
+import { createBuilding, isFull, deposit, take } from './buildings.js';
 import { createTradePost, tickTradePost, sellUnits, buyUnits, buyPrice } from './trade.js';
 import { runScript } from './scripts.js';
 import { TRADE_LOAD, ROAD_INTERVAL, ROAD_BUILD_TIME } from './config.js';
@@ -134,6 +136,8 @@ export class Game {
       // from the treasury so the harvest loop runs from the first frame.
       this._autoBuildStarter(team, 'loggingCamp', 'forest');
       this._autoBuildStarter(team, 'stoneCutter', 'stonehill');
+      // Starter warehouse near the depot (hauler needs somewhere to deliver).
+      this._placeStarterWarehouse(team);
 
       for (let i = 0; i < workersPerTeam; i++) {
         const spawn = this._findOpenLandNear(depots[id].x, depots[id].y);
@@ -412,6 +416,13 @@ export class Game {
     if (team) team.scriptRunning = !!running;
   }
 
+  /** Place one starter warehouse adjacent to the depot (seeded BFS). */
+  _placeStarterWarehouse(team) {
+    const spot = this._bfsFind(team.depot.x, team.depot.y, (x, y) => this._isOpenLand(x, y));
+    if (!spot) return null;
+    return this.build(team.id, 'warehouse', spot.x, spot.y);
+  }
+
   /** Auto-place a starter camp/cutter next to the nearest matching feature. */
   _autoBuildStarter(team, kind, featureKind) {
     const depot = team.depot;
@@ -480,19 +491,20 @@ export class Game {
       this._drainCamps();
     }
 
-    // Running auto-scripts act on their own timer (trade + road building).
+    // Running auto-scripts act on their own timer (trade + road + warehouse building).
     for (const team of this.teams) {
       runScript(team, this.tradePosts, simDt);
       this._autoBuildRoads(team, simDt);
+      this._autoBuildStructures(team, simDt);
     }
   }
 
-  // Move one unit of buffered material from each camp/cutter to its team's
-  // treasury (the facility is a buffer; the treasury is the bank).
+  // Fallback drain for teams with fewer than 3 workers (no dedicated hauler).
+  // Teams with 3+ workers use the physical hauler instead.
   _drainCamps() {
     for (const b of this.buildings) {
       const team = this.teams[b.teamId];
-      if (!team) continue;
+      if (!team || team.workers.length >= 3) continue;
       if (b.kind === 'loggingCamp' && b.wood > 0) { b.wood -= 1; team.stock.wood += 1; }
       else if (b.kind === 'stoneCutter' && b.stone > 0) { b.stone -= 1; team.stock.stone += 1; }
     }
@@ -542,6 +554,14 @@ export class Game {
       this._startRoad(worker, team);
     }
     if (worker.job === 'road') { this._stepRoad(worker, team, simDt); return; }
+
+    // The team's hauler (worker[2]) physically moves goods from camps to warehouses.
+    if (worker.job !== 'haul' && this._isHauler(worker, team)) {
+      const camp = this._pickCampWithStock(team);
+      const wh = this._nearestWarehouse(team, worker.x, worker.y);
+      if (camp && wh) this._startHaul(worker, team, camp);
+    }
+    if (worker.job === 'haul') { this._stepHaul(worker, team, simDt); return; }
 
     if (!worker.job) {
       if (!this._assignJob(worker, team)) return; // nothing to do — idle
@@ -724,6 +744,111 @@ export class Game {
   _isBuilder(worker, team) {
     const b = team.workers[1] || team.workers[0];
     return b === worker;
+  }
+
+  // --- physical goods hauling (camp → warehouse) ----------------------------
+
+  _isHauler(worker, team) {
+    return team.workers.length >= 3 && team.workers[2] === worker;
+  }
+
+  _pickCampWithStock(team) {
+    for (const b of team.buildings) {
+      if (b.kind === 'loggingCamp' && b.wood > 0) return { x: b.x, y: b.y, good: 'wood' };
+      if (b.kind === 'stoneCutter' && b.stone > 0) return { x: b.x, y: b.y, good: 'stone' };
+    }
+    return null;
+  }
+
+  _nearestWarehouse(team, fromX, fromY) {
+    let best = null;
+    let bestD = Infinity;
+    for (const b of team.buildings) {
+      if (b.kind !== 'warehouse' || isFull(b)) continue;
+      const d = Math.abs(b.x - fromX) + Math.abs(b.y - fromY);
+      if (d < bestD) { bestD = d; best = b; }
+    }
+    return best;
+  }
+
+  _startHaul(worker, team, camp) {
+    if (worker.carrying) worker.dropCarried(this.map);
+    this._endJob(worker);
+    worker.job = 'haul';
+    worker.haul = { campX: camp.x, campY: camp.y, good: camp.good, phase: 'toCamp' };
+    this._routeTo(worker, camp.x, camp.y);
+  }
+
+  _endHaul(worker) {
+    worker.job = null;
+    worker.haul = null;
+    worker.load = null;
+    worker.path = null;
+  }
+
+  // FSM: toCamp (arrive at camp, pick up 1 unit) → toWarehouse (deliver to warehouse)
+  _stepHaul(worker, team, simDt) {
+    const h = worker.haul;
+    if (!h) { this._endHaul(worker); return; }
+
+    if (h.phase === 'toCamp') {
+      if (!this._advanceWorker(worker, simDt)) return;
+      const camp = this._buildingAt(h.campX, h.campY);
+      if (!camp || !take(camp, h.good)) { this._endHaul(worker); return; }
+      worker.load = { good: h.good, qty: 1 };
+      const wh = this._nearestWarehouse(team, worker.x, worker.y);
+      if (!wh) {
+        // No warehouse available — put unit back
+        camp[h.good] += 1;
+        worker.load = null;
+        this._endHaul(worker);
+        return;
+      }
+      h.warehouseX = wh.x;
+      h.warehouseY = wh.y;
+      h.phase = 'toWarehouse';
+      this._routeTo(worker, wh.x, wh.y);
+      return;
+    }
+
+    if (h.phase === 'toWarehouse') {
+      if (!this._advanceWorker(worker, simDt)) return;
+      const wh = this._buildingAt(h.warehouseX, h.warehouseY);
+      if (wh && !isFull(wh) && deposit(wh, h.good)) {
+        team.stock[h.good] = (team.stock[h.good] || 0) + 1;
+      } else {
+        // Warehouse gone or full — try the next available one
+        const alt = this._nearestWarehouse(team, worker.x, worker.y);
+        if (alt) {
+          h.warehouseX = alt.x;
+          h.warehouseY = alt.y;
+          this._routeTo(worker, alt.x, alt.y);
+          return;
+        }
+        // Nowhere to deliver — return goods to camp
+        const camp = this._buildingAt(h.campX, h.campY);
+        if (camp && !isFull(camp)) camp[h.good] = (camp[h.good] || 0) + 1;
+      }
+      worker.load = null;
+      this._endHaul(worker);
+    }
+  }
+
+  // --- auto-build structures (warehouses) -----------------------------------
+
+  // A running script places up to WAREHOUSE_AUTO_CAP warehouses, one every
+  // BUILD_AUTO_INTERVAL sim-seconds, when it can afford the cost and has open land.
+  _autoBuildStructures(team, simDt) {
+    if (!team.scriptRunning) return;
+    team._buildAutoTimer = (team._buildAutoTimer || 0) + simDt;
+    if (team._buildAutoTimer < BUILD_AUTO_INTERVAL) return;
+    team._buildAutoTimer = 0;
+    const warehouses = team.buildings.filter(b => b.kind === 'warehouse');
+    if (warehouses.length >= WAREHOUSE_AUTO_CAP) return;
+    if (team.stock.wood < BUILD_COST.wood || team.stock.stone < BUILD_COST.stone) return;
+    const spot = this._bfsFind(team.depot.x, team.depot.y, (x, y) => this.canBuildAt(x, y));
+    if (!spot) return;
+    this.build(team.id, 'warehouse', spot.x, spot.y);
   }
 
   // Begin the next queued road plan: haul material from the depot, carry it to

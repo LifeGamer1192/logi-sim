@@ -152,7 +152,13 @@ export const START_STONE = 4;
 export const HARVEST_NEAR = 8;
 
 // Camps ship their buffered goods to the team treasury this often (sim-sec).
+// Used as fallback for teams with fewer than 3 workers (no dedicated hauler).
 export const DRAIN_INTERVAL = 2;
+
+// Auto-build: how often (sim-sec) a running script tries to place a new warehouse.
+export const BUILD_AUTO_INTERVAL = 15;
+// Maximum warehouses a script will auto-build per team (prevents runaway sprawl).
+export const WAREHOUSE_AUTO_CAP = 4;
 
 // --- economy & trade (logi-sim) -------------------------------------------
 // Each team owns a treasury (currency + bulk wood/stone). Players start rich
@@ -162,15 +168,8 @@ export const INIT_CURRENCY = 1000;
 export const INIT_WOOD = 500;
 export const INIT_STONE = 30;
 
-// Goods that can be traded at a post.
-export const TRADE_GOODS = ['wood', 'stone'];
-
-// Base unit prices per good (buy > sell = the post's spread). Per-post tables
-// start from these with a small seeded jitter.
-export const TRADE_BASE = {
-  wood: { sell: 2, buy: 3 },
-  stone: { sell: 4, buy: 6 },
-};
+// Goods that can be traded at a post (derived from goods.js catalogue).
+export { TRADE_GOODS, TRADE_BASE } from './goods.js';
 
 // Dynamic-price knobs. Selling pushes the sell price down (oversupply),
 // buying pushes the buy price up (scarcity); both drift back to base over

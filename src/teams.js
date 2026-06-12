@@ -37,6 +37,8 @@ export function createTeam(id, depot, scriptId = 'hasty') {
     // worker hauls material to each site and constructs it over time.
     roadQueue: [],
     _roadTimer: 0,
+    // Auto-build timer: how long since the last automatic warehouse placement.
+    _buildAutoTimer: 0,
   };
 }
 
