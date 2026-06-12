@@ -883,21 +883,57 @@ export class Game {
     }
   }
 
-  // --- auto-build structures (warehouses) -----------------------------------
+  // --- auto-build structures -----------------------------------------------
 
-  // A running script places up to WAREHOUSE_AUTO_CAP warehouses, one every
-  // BUILD_AUTO_INTERVAL sim-seconds, when it can afford the cost and has open land.
+  // 加工 building の建築優先順位（依存関係の順）
+  static PROC_BUILD_ORDER = [
+    'sawmill', 'charcoalKiln', 'kiln', 'smelter', 'alloyForge',
+    'ropeMaker', 'windmill', 'weavery', 'smithy', 'precisionWorkshop',
+  ];
+
+  /**
+   * 実行中スクリプトが BUILD_AUTO_INTERVAL ごとに1棟ずつ建築する。
+   * 優先順位：採取 building → 加工 building → 倉庫（上限 WAREHOUSE_AUTO_CAP）
+   */
   _autoBuildStructures(team, simDt) {
     if (!team.scriptRunning) return;
     team._buildAutoTimer = (team._buildAutoTimer || 0) + simDt;
     if (team._buildAutoTimer < BUILD_AUTO_INTERVAL) return;
     team._buildAutoTimer = 0;
-    const warehouses = team.buildings.filter(b => b.kind === 'warehouse');
-    if (warehouses.length >= WAREHOUSE_AUTO_CAP) return;
     if (team.stock.wood < BUILD_COST.wood || team.stock.stone < BUILD_COST.stone) return;
-    const spot = this._bfsFind(team.depot.x, team.depot.y, (x, y) => this.canBuildAt(x, y));
-    if (!spot) return;
-    this.build(team.id, 'warehouse', spot.x, spot.y);
+
+    // 1. 採取 building：feature が存在する種類ごとに1棟ずつ自動建築
+    for (const [kind, spec] of Object.entries(EXTRACTION_BUILDINGS)) {
+      if (team.buildings.some(b => b.kind === kind)) continue;
+      const spot = this._findSpotForExtraction(team, spec.featureKind);
+      if (spot && this.build(team.id, kind, spot.x, spot.y)) return;
+    }
+
+    // 2. 加工 building：依存順に1種類ずつ建築
+    for (const kind of Game.PROC_BUILD_ORDER) {
+      if (team.buildings.some(b => b.kind === kind)) continue;
+      const spot = this._bfsFind(team.depot.x, team.depot.y, (x, y) => this.canBuildAt(x, y));
+      if (spot && this.build(team.id, kind, spot.x, spot.y)) return;
+    }
+
+    // 3. 倉庫を上限まで増設
+    const warehouses = team.buildings.filter(b => b.kind === 'warehouse');
+    if (warehouses.length < WAREHOUSE_AUTO_CAP) {
+      const spot = this._bfsFind(team.depot.x, team.depot.y, (x, y) => this.canBuildAt(x, y));
+      if (spot) this.build(team.id, 'warehouse', spot.x, spot.y);
+    }
+  }
+
+  /** 指定 featureKind が HARVEST_NEAR 内に存在する、開けた陸タイルを返す。 */
+  _findSpotForExtraction(team, featureKind) {
+    const feat = this._nearestFeature(
+      team.depot.x, team.depot.y, featureKind,
+      team.depot.x, team.depot.y, 50,
+    );
+    if (!feat) return null;
+    return this._bfsFind(feat.x, feat.y, (a, b) =>
+      this._isOpenLand(a, b) &&
+      this._nearestFeature(a, b, featureKind, a, b, HARVEST_NEAR) != null);
   }
 
   // Begin the next queued road plan: haul material from the depot, carry it to
