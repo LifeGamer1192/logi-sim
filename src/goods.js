@@ -29,6 +29,12 @@ export const GOODS = [
   { id: 'flour',    sell:  5, buy:  8, nameEn: 'Flour',    nameJa: '小麦粉' },
   { id: 'tool',     sell: 14, buy: 20, nameEn: 'Tool',     nameJa: '道具' },
   { id: 'gear',     sell: 16, buy: 24, nameEn: 'Gear',     nameJa: '歯車' },
+  // Crops (seed = produce, simplified)
+  { id: 'wheat',   sell:  4, buy:  6, nameEn: 'Wheat',   nameJa: '小麦' },
+  { id: 'potato',  sell:  5, buy:  8, nameEn: 'Potato',  nameJa: 'ジャガイモ' },
+  { id: 'cotton',  sell: 10, buy: 15, nameEn: 'Cotton',  nameJa: '綿' },
+  { id: 'turnip',  sell:  3, buy:  5, nameEn: 'Turnip',  nameJa: 'カブ' },
+  { id: 'rice',    sell:  8, buy: 12, nameEn: 'Rice',    nameJa: '米' },
 ];
 
 export const GOODS_MAP = Object.fromEntries(GOODS.map(g => [g.id, g]));

@@ -8,7 +8,7 @@ import { GOODS, GOODS_MAP, TRADE_GOODS, TRADE_BASE } from '../src/goods.js';
 
 test('catalogue has roughly 20 goods', () => {
   assert.ok(GOODS.length >= 18, `expected ≥18, got ${GOODS.length}`);
-  assert.ok(GOODS.length <= 24, `expected ≤24, got ${GOODS.length}`);
+  assert.ok(GOODS.length <= 30, `expected ≤30, got ${GOODS.length}`);
 });
 
 test('every good has a non-empty id, en and ja name', () => {

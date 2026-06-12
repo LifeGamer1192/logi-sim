@@ -6,6 +6,7 @@
 
 import { SCRIPT_INTERVAL } from './config.js';
 import { sellPrice, buyPrice } from './trade.js';
+import { CROP_IDS } from './crops.js';
 
 export const SCRIPTS = {
   hasty:    { id: 'hasty',    label: '拙速', keepWood: 50, sellBatch: 15, minStone: 8 },
@@ -14,12 +15,12 @@ export const SCRIPTS = {
 
 // 売却優先順位：高価値品から順に余剰分を売る
 const SELL_PRIORITY = [
-  'gear', 'tool', 'bronze', 'iron', 'copper', 'tin', 'glass', 'brick',
-  'plank', 'charcoal', 'cloth', 'leather', 'rope', 'flour',
-  'coal', 'grain', 'clay', 'sand', 'stone', 'wood',
+  'gear', 'tool', 'bronze', 'cotton', 'iron', 'rice', 'copper', 'tin', 'glass', 'brick',
+  'plank', 'charcoal', 'wheat', 'potato', 'cloth', 'leather', 'rope', 'flour',
+  'coal', 'turnip', 'grain', 'clay', 'sand', 'stone', 'wood',
 ];
 
-// 加工の投入素材として最低限キープする量
+// 加工の投入素材として最低限キープする量（農作物は5粒をキープして植え付け用に確保）
 const KEEP_MIN = {
   charcoal: 3,  // 精錬所の燃料バッファ
   iron:     2,  // 鍛冶場の投入バッファ
@@ -28,6 +29,11 @@ const KEEP_MIN = {
   tin:      2,  // 合金炉バッファ
   bronze:   2,  // 精密工房バッファ
   grain:    5,  // 複数加工所への共通投入素材
+  wheat:    5,  // 植え付け用確保
+  potato:   5,
+  cotton:   5,
+  turnip:   5,
+  rice:     5,
 };
 
 /** good を売る際に手元にキープする最低量 */
@@ -115,6 +121,22 @@ function actLongterm(team, posts, cfg) {
   }
 }
 
+// 農作物の種（= 農作物）が不足していたら交易所から購入する。
+// 注文を 1 件キューしたら true を返す（runScript はそこで終了）。
+function actBuyCrops(team, posts) {
+  for (const kind of CROP_IDS) {
+    if ((team.stock[kind] || 0) >= 5) continue;
+    const pi = cheapestBuyIndex(posts, kind);
+    if (pi < 0) continue;
+    const need = 5 - (team.stock[kind] || 0);
+    const cost = buyPrice(posts[pi], kind) * need;
+    if ((team.stock.currency || 0) < cost + 200) continue; // 200通貨の余裕を残す
+    order(team, 'buy', kind, pi, need);
+    return true;
+  }
+  return false;
+}
+
 /**
  * 実行中チームのスクリプトを進める。
  * 一度に 1 つの注文のみキュー（配送員が前の注文を終えるまで待つ）。
@@ -127,6 +149,8 @@ export function runScript(team, posts, dt) {
   const trader = team.workers[0];
   if (team.tradeQueue.length || (trader && trader.job === 'trade')) return;
   const cfg = SCRIPTS[team.scriptId] || SCRIPTS.hasty;
+  // 農作物の種が不足していたら優先購入
+  if (actBuyCrops(team, posts)) return;
   if (team.scriptId === 'longterm') actLongterm(team, posts, cfg);
   else actHasty(team, posts, cfg);
 }

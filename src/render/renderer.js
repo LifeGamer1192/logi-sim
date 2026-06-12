@@ -11,6 +11,7 @@ import { TileType } from '../map/tile.js';
 import { BASE_ELEV, TEAM_COLORS } from '../config.js';
 import { getLang } from '../i18n.js';
 import { ALL_GOODS_IDS } from '../buildings.js';
+import { CROP_DEFS } from '../crops.js';
 import {
   worldToScreen,
   screenToWorld,
@@ -204,6 +205,7 @@ export class Renderer {
         if (tile.feature) drawables.push({ kind: 'feature', x: x + 0.5, y: y + 0.5, e, ref: tile.feature });
         if (tile.building) drawables.push({ kind: 'building', x: x + 0.5, y: y + 0.5, e, ref: tile.building });
         if (tile.trade) drawables.push({ kind: 'trade', x: x + 0.5, y: y + 0.5, e, ref: tile.trade });
+        if (tile.crop) drawables.push({ kind: 'crop', x: x + 0.5, y: y + 0.5, e, ref: tile.crop });
         if (tile.item) drawables.push({ kind: 'item', x: x + 0.5, y: y + 0.5, e, ref: tile.item });
       }
     }
@@ -220,6 +222,7 @@ export class Renderer {
       if (d.kind === 'feature') this._drawFeature(ctx, p.x, p.y, ts, d.ref);
       else if (d.kind === 'building') this._drawBuilding(ctx, p.x, p.y, ts, d.ref, scene.teams);
       else if (d.kind === 'trade') this._drawTrade(ctx, p.x, p.y, ts, d.ref);
+      else if (d.kind === 'crop') this._drawCrop(ctx, p.x, p.y, ts, d.ref);
       else if (d.kind === 'item') this._drawItem(ctx, p.x, p.y, ts, d.ref);
       else this._drawWorker(ctx, p.x, p.y, ts, d.ref, scene.teams);
     }
@@ -449,6 +452,38 @@ export class Renderer {
     ctx.strokeStyle = 'rgba(40,28,12,0.6)';
     ctx.lineWidth = 1;
     ctx.strokeRect(cx - s / 2, cy - h, s, h);
+  }
+
+  // Crop plant sprite: stem growing from the ground, ripe crops get a gold halo.
+  _drawCrop(ctx, cx, cy, ts, crop) {
+    const def = CROP_DEFS[crop.kind];
+    const color = def ? def.color : '#88aa44';
+    const g = Math.min(1, crop.growth);
+    const stemH = ts * (0.10 + 0.30 * g);
+    const crownR = ts * (0.06 + 0.14 * g);
+
+    // stem
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1, ts * 0.04);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx, cy - stemH);
+    ctx.stroke();
+
+    // crown (plant top)
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(cx, cy - stemH, crownR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ripe indicator — golden ring
+    if (g >= 1) {
+      ctx.strokeStyle = '#ffd040';
+      ctx.lineWidth = Math.max(1, ts * 0.05);
+      ctx.beginPath();
+      ctx.arc(cx, cy - stemH, crownR + ts * 0.07, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   _drawWorker(ctx, cx, cy, ts, w, teams) {

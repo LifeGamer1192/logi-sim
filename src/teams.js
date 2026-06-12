@@ -39,6 +39,9 @@ export function createTeam(id, depot, scriptId = 'hasty') {
     _roadTimer: 0,
     // Auto-build timer: how long since the last automatic warehouse placement.
     _buildAutoTimer: 0,
+    // Pending crop jobs { action:'plant'|'harvest', x, y, kind }.
+    cropJobs: [],
+    _cropAutoTimer: 0,
   };
 }
 

@@ -709,6 +709,11 @@ function describeTile(tile) {
     const good = f.kind === 'forest' ? t('good.wood') : t('good.stone');
     return `${t('feat.' + f.kind)} ${good}${f.stock}/${f.max}`;
   }
+  if (tile.crop) {
+    const pct = Math.round(tile.crop.growth * 100);
+    const ripe = tile.crop.growth >= 1 ? ' (ready)' : '';
+    return `${t('good.' + tile.crop.kind)} ${pct}%${ripe}`;
+  }
   if (tile.item) return t('good.' + (tile.item.type === 'wood' || tile.item.type === 'stone' ? tile.item.type : 'package'));
   const base = tile.type === TileType.WATER ? t('legend.water') : t('legend.richSoil');
   if (tile.road) return `${base} · ${t(tile.road === 'stone' ? 'build.stoneRoad' : 'build.woodRoad')}`;

@@ -12,6 +12,7 @@ export const ALL_GOODS_IDS = [
   'wood', 'stone', 'plank', 'brick', 'charcoal', 'iron', 'copper', 'tin',
   'bronze', 'coal', 'clay', 'sand', 'glass', 'rope', 'cloth', 'leather',
   'grain', 'flour', 'tool', 'gear', 'ironOre', 'copperOre', 'tinOre',
+  'wheat', 'potato', 'cotton', 'turnip', 'rice',
 ];
 
 const ALL_GOODS_SET = new Set(ALL_GOODS_IDS);

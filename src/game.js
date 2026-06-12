@@ -34,6 +34,9 @@ import {
   PROC_INTERVAL,
   PROC_OUTPUT_CAP,
   HISTORY_INTERVAL,
+  CROP_WATER_RANGE,
+  CROP_AUTO_INTERVAL,
+  CROP_MAX_PLANTED,
 } from './config.js';
 import { mulberry32 } from './core/rng.js';
 import { generateMap, mapStats } from './map/mapGenerator.js';
@@ -53,6 +56,7 @@ import {
 } from './features.js';
 import { createBuilding, isFull, deposit, take, total, EXTRACTION_BUILDINGS, PROC_RECIPES } from './buildings.js';
 import { PROC_BUILD_PREREQS } from './strategy.js';
+import { CROP_IDS, CROP_DEFS, cropGrowthRate, cropHarvestYield, tileCropScore } from './crops.js';
 import { createTradePost, tickTradePost, sellUnits, buyUnits, buyPrice } from './trade.js';
 import { runScript } from './scripts.js';
 import { TRADE_LOAD, ROAD_INTERVAL, ROAD_BUILD_TIME } from './config.js';
@@ -89,6 +93,7 @@ export class Game {
     this._drainTimer = 0;
     this._historyTimer = 0;
     this._history = [];
+    this.cropTiles = [];  // {x, y} of all planted crop tiles
 
     this.clock = 0;
     this.environment = null;
@@ -134,6 +139,7 @@ export class Game {
     this.tradePosts = [];
     this.teams = [];
     this.workers = [];
+    this.cropTiles = [];
     this._drainTimer = 0;
     this._historyTimer = 0;
     this._history = [];
@@ -319,6 +325,12 @@ export class Game {
   // --- buildings ------------------------------------------------------------
 
   _placeBuilding(team, kind, x, y, init) {
+    // Clear any crop that was growing on this tile.
+    if (this.map.tiles[y][x].crop) {
+      this.map.tiles[y][x].crop = null;
+      const ci = this.cropTiles.findIndex(ct => ct.x === x && ct.y === y);
+      if (ci >= 0) this.cropTiles.splice(ci, 1);
+    }
     const b = createBuilding(kind, team.id, init);
     b.x = x;
     b.y = y;
@@ -525,10 +537,14 @@ export class Game {
       runScript(team, this.tradePosts, simDt);
       this._autoBuildRoads(team, simDt);
       this._autoBuildStructures(team, simDt);
+      this._autoCropJobs(team, simDt);
     }
 
     // Processing buildings convert goods from team.stock on their own timer.
     this._tickProcessors(simDt);
+
+    // Advance crop growth.
+    this._tickCrops(simDt);
 
     // Record a history snapshot for time-series graphs.
     this._historyTimer += simDt;
@@ -617,6 +633,17 @@ export class Game {
       if (camp && wh) this._startHaul(worker, team, camp);
     }
     if (worker.job === 'haul') { this._stepHaul(worker, team, simDt); return; }
+
+    // farmCrop: idle non-primary worker handles crop planting/harvesting
+    if (worker.job === 'farmCrop') { this._stepFarmCrop(worker, team, simDt); return; }
+    if (!worker.job && team.cropJobs.length) {
+      const cji = team.cropJobs.findIndex(j => this._isCropJobStillValid(j));
+      if (cji >= 0) {
+        const cropJob = team.cropJobs.splice(cji, 1)[0];
+        this._startFarmCropJob(worker, cropJob);
+      }
+    }
+    if (worker.job === 'farmCrop') { this._stepFarmCrop(worker, team, simDt); return; }
 
     if (!worker.job) {
       if (!this._assignJob(worker, team)) return; // nothing to do — idle
@@ -1027,6 +1054,175 @@ export class Game {
       tile.roadPlan = null;
       this._endRoad(worker);
     }
+  }
+
+  // --- crop farming ----------------------------------------------------------
+
+  /** True if any tile within `range` Manhattan distance is a water tile. */
+  _hasWaterNear(x, y, range = CROP_WATER_RANGE) {
+    const minX = Math.max(0, x - range);
+    const maxX = Math.min(this.map.cols - 1, x + range);
+    const minY = Math.max(0, y - range);
+    const maxY = Math.min(this.map.rows - 1, y + range);
+    for (let ty = minY; ty <= maxY; ty++) {
+      for (let tx = minX; tx <= maxX; tx++) {
+        if (Math.abs(tx - x) + Math.abs(ty - y) > range) continue;
+        if (this.map.tiles[ty][tx].type === TileType.WATER) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Advance growth for all planted crop tiles; prune entries without crops. */
+  _tickCrops(simDt) {
+    const { temperature, season } = this.environment;
+    const dead = [];
+    for (let i = 0; i < this.cropTiles.length; i++) {
+      const { x, y } = this.cropTiles[i];
+      const tile = this.map.tiles[y]?.[x];
+      if (!tile?.crop) { dead.push(i); continue; }
+      const crop = tile.crop;
+      if (crop.growth >= 1) continue; // ripe — stop accumulating
+      const rate = cropGrowthRate(crop.kind, temperature, tile, season, this._hasWaterNear(x, y));
+      const dt = simDt / crop.growTime;
+      crop.growth = Math.min(1, crop.growth + rate * dt);
+      crop.qualityAcc += rate * simDt;
+    }
+    for (let i = dead.length - 1; i >= 0; i--) this.cropTiles.splice(dead[i], 1);
+  }
+
+  /** True if a queued crop job is still actionable. */
+  _isCropJobStillValid(job) {
+    if (!job) return false;
+    const tile = this.map.tiles[job.y]?.[job.x];
+    if (!tile) return false;
+    if (job.action === 'plant') {
+      return !tile.crop && tile.building == null && tile.feature == null
+        && tile.trade == null && this._isLand(job.x, job.y);
+    }
+    if (job.action === 'harvest') {
+      return tile.crop?.growth >= 1 && tile.crop?.teamId === job.teamId;
+    }
+    return false;
+  }
+
+  /** Best open land tile within 35 tiles of the depot to plant `kind`. */
+  _findBestCropTile(team, kind) {
+    const def = CROP_DEFS[kind];
+    if (!def) return null;
+    const { temperature, season } = this.environment;
+    const { x: dx, y: dy } = team.depot;
+    const R = 35;
+    let best = null;
+    let bestScore = -1;
+    for (let y = Math.max(0, dy - R); y <= Math.min(this.map.rows - 1, dy + R); y++) {
+      for (let x = Math.max(0, dx - R); x <= Math.min(this.map.cols - 1, dx + R); x++) {
+        if (Math.abs(x - dx) + Math.abs(y - dy) > R) continue;
+        if (!this._isLand(x, y)) continue;
+        const tile = this.map.tiles[y][x];
+        if (tile.crop || tile.building || tile.feature || tile.trade) continue;
+        const hasWater = def.waterNear ? this._hasWaterNear(x, y) : false;
+        if (def.waterNear && !hasWater) continue;
+        const score = tileCropScore(kind, temperature, tile, season, hasWater);
+        if (score > bestScore) { bestScore = score; best = { x, y }; }
+      }
+    }
+    return bestScore > 0 ? best : null;
+  }
+
+  /**
+   * Queue harvest jobs for ripe crops; queue a plant job when below
+   * CROP_MAX_PLANTED. Runs on the team's _cropAutoTimer.
+   */
+  _autoCropJobs(team, simDt) {
+    if (!team.scriptRunning) return;
+    team._cropAutoTimer = (team._cropAutoTimer || 0) + simDt;
+    if (team._cropAutoTimer < CROP_AUTO_INTERVAL) return;
+    team._cropAutoTimer = 0;
+
+    // Harvest ripe crops owned by this team
+    for (const ct of this.cropTiles) {
+      const tile = this.map.tiles[ct.y]?.[ct.x];
+      if (!tile?.crop || tile.crop.teamId !== team.id || tile.crop.growth < 1) continue;
+      if (team.cropJobs.some(j => j.action === 'harvest' && j.x === ct.x && j.y === ct.y)) continue;
+      team.cropJobs.push({ action: 'harvest', x: ct.x, y: ct.y, kind: tile.crop.kind, teamId: team.id });
+    }
+
+    // Plant if still under the cap
+    const planted = this.cropTiles.filter(ct => {
+      const tile = this.map.tiles[ct.y]?.[ct.x];
+      return tile?.crop?.teamId === team.id;
+    }).length;
+    const queued = team.cropJobs.filter(j => j.action === 'plant').length;
+    if (planted + queued >= CROP_MAX_PLANTED) return;
+
+    // Pick best scoring (kind, tile) pair from stocked crops
+    const { temperature, season } = this.environment;
+    let bestKind = null;
+    let bestTile = null;
+    let bestScore = -1;
+    for (const kind of CROP_IDS) {
+      if ((team.stock[kind] || 0) < 1) continue;
+      const tile = this._findBestCropTile(team, kind);
+      if (!tile) continue;
+      const score = tileCropScore(kind, temperature,
+        this.map.tiles[tile.y][tile.x], season, this._hasWaterNear(tile.x, tile.y));
+      if (score > bestScore) { bestScore = score; bestKind = kind; bestTile = tile; }
+    }
+    if (bestKind && bestTile) {
+      team.cropJobs.push({ action: 'plant', x: bestTile.x, y: bestTile.y, kind: bestKind, teamId: team.id });
+    }
+  }
+
+  _startFarmCropJob(worker, job) {
+    if (worker.carrying) worker.dropCarried(this.map);
+    this._endJob(worker);
+    worker.job = 'farmCrop';
+    worker.cropJob = { ...job, phase: 'toFarmTile' };
+    this._routeTo(worker, job.x, job.y);
+  }
+
+  _endFarmJob(worker) {
+    worker.job = null;
+    worker.cropJob = null;
+    worker.path = null;
+  }
+
+  // FSM: toFarmTile → arrive → plant (place tile.crop) or harvest (collect yield)
+  _stepFarmCrop(worker, team, simDt) {
+    const cj = worker.cropJob;
+    if (!cj || !this._isCropJobStillValid(cj)) { this._endFarmJob(worker); return; }
+    if (!this._advanceWorker(worker, simDt)) return;
+
+    const tile = this.map.tiles[cj.y]?.[cj.x];
+    if (!tile) { this._endFarmJob(worker); return; }
+
+    if (cj.action === 'plant') {
+      if (tile.crop || tile.building || tile.feature) { this._endFarmJob(worker); return; }
+      if ((team.stock[cj.kind] || 0) < 1) { this._endFarmJob(worker); return; }
+      team.stock[cj.kind] -= 1;
+      tile.crop = {
+        kind: cj.kind,
+        growth: 0,
+        qualityAcc: 0,
+        growTime: CROP_DEFS[cj.kind].growTime,
+        teamId: team.id,
+      };
+      this.cropTiles.push({ x: cj.x, y: cj.y });
+
+    } else if (cj.action === 'harvest') {
+      if (!tile.crop || tile.crop.growth < 1 || tile.crop.teamId !== team.id) {
+        this._endFarmJob(worker);
+        return;
+      }
+      const yield_ = cropHarvestYield(tile.crop);
+      team.stock[tile.crop.kind] = (team.stock[tile.crop.kind] || 0) + yield_;
+      const idx = this.cropTiles.findIndex(t => t.x === cj.x && t.y === cj.y);
+      if (idx >= 0) this.cropTiles.splice(idx, 1);
+      tile.crop = null;
+    }
+
+    this._endFarmJob(worker);
   }
 
   _updateEnvironment() {

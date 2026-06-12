@@ -172,6 +172,14 @@ export const WAREHOUSE_AUTO_CAP = 4;
 export const PROC_INTERVAL = 8;
 // How often (sim-sec) a history snapshot is recorded for time-series graphs.
 export const HISTORY_INTERVAL = 30;
+
+// --- crops ----------------------------------------------------------------
+// Manhattan-distance radius for "has water nearby" check (for rice).
+export const CROP_WATER_RANGE = 3;
+// How often (sim-sec) the auto-script scans for crop jobs to queue.
+export const CROP_AUTO_INTERVAL = 20;
+// Max planted crops of each kind per team before auto-planting pauses.
+export const CROP_MAX_PLANTED = 6;
 // A processing building stops producing an output once the team treasury
 // holds this many units of that good (prevents runaway over-production).
 export const PROC_OUTPUT_CAP = 50;
