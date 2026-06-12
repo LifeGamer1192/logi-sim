@@ -16,10 +16,11 @@ export const SCRIPTS = {
 
 // 売却優先順位：高価値品から順に余剰分を売る
 const SELL_PRIORITY = [
-  'gear', 'canvas', 'tool', 'bronze', 'cottonCloth', 'cotton', 'iron', 'rice',
-  'copper', 'tin', 'thread', 'glass', 'brick',
-  'plank', 'charcoal', 'wheat', 'potato', 'cloth', 'leather', 'rope', 'flour',
-  'coal', 'turnip', 'grain', 'clay', 'sand', 'stone', 'wood',
+  'gear', 'canvas', 'cottonCloth', 'tool', 'bronze', 'thread', 'cloth',
+  'iron', 'copper', 'tin', 'cotton', 'coal',
+  'rice', 'glass', 'charcoal', 'brick', 'rope', 'flour',
+  'leather', 'plank', 'potato', 'wheat', 'stone',
+  'turnip', 'grain', 'clay', 'sand', 'wood',
 ];
 
 // 加工の投入素材として最低限キープする量（農作物は5粒をキープして植え付け用に確保）
