@@ -134,6 +134,14 @@ export const RESOURCE_MAX = 5;        // full stock of a forest / stone hill
 export const REGEN_INTERVAL = 6;      // sim-seconds to regrow one stock point
 export const FOREST_COUNT = 70;       // forests scattered on a fresh map
 export const STONEHILL_COUNT = 45;    // stone hills scattered on a fresh map
+export const CLAY_PIT_COUNT = 25;
+export const SAND_BAR_COUNT = 20;
+export const COAL_VEIN_COUNT = 20;
+export const CROP_FIELD_COUNT = 30;
+export const IRON_VEIN_COUNT = 15;
+export const COPPER_VEIN_COUNT = 15;
+export const TIN_VEIN_COUNT = 15;
+export const PASTURE_COUNT = 20;
 
 // Building storage caps.
 export const WAREHOUSE_CAP = 10;      // mixed wood + stone
@@ -159,6 +167,12 @@ export const DRAIN_INTERVAL = 2;
 export const BUILD_AUTO_INTERVAL = 15;
 // Maximum warehouses a script will auto-build per team (prevents runaway sprawl).
 export const WAREHOUSE_AUTO_CAP = 4;
+
+// Processing buildings: seconds between one conversion cycle per building.
+export const PROC_INTERVAL = 8;
+// A processing building stops producing an output once the team treasury
+// holds this many units of that good (prevents runaway over-production).
+export const PROC_OUTPUT_CAP = 50;
 
 // --- economy & trade (logi-sim) -------------------------------------------
 // Each team owns a treasury (currency + bulk wood/stone). Players start rich

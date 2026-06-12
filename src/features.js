@@ -10,20 +10,32 @@ import { RESOURCE_MAX, REGEN_INTERVAL } from './config.js';
 
 /** The good a feature yields. */
 export const FEATURE_YIELD = {
-  forest: 'wood',
-  stonehill: 'stone',
+  forest:     'wood',
+  stonehill:  'stone',
+  clayPit:    'clay',
+  sandBar:    'sand',
+  coalVein:   'coal',
+  cropField:  'grain',
+  ironVein:   'ironOre',
+  copperVein: 'copperOre',
+  tinVein:    'tinOre',
+  pasture:    'leather',
 };
 
 function createFeature(kind) {
   return { kind, stock: RESOURCE_MAX, max: RESOURCE_MAX, regen: 0 };
 }
 
-export function createForest() {
-  return createFeature('forest');
-}
-export function createStoneHill() {
-  return createFeature('stonehill');
-}
+export function createForest()      { return createFeature('forest'); }
+export function createStoneHill()   { return createFeature('stonehill'); }
+export function createClayPit()     { return createFeature('clayPit'); }
+export function createSandBar()     { return createFeature('sandBar'); }
+export function createCoalVein()    { return createFeature('coalVein'); }
+export function createCropField()   { return createFeature('cropField'); }
+export function createIronVein()    { return createFeature('ironVein'); }
+export function createCopperVein()  { return createFeature('copperVein'); }
+export function createTinVein()     { return createFeature('tinVein'); }
+export function createPasture()     { return createFeature('pasture'); }
 
 /** True if there is anything left to take right now. */
 export function canHarvest(feature) {

@@ -10,6 +10,7 @@
 import { TileType } from '../map/tile.js';
 import { BASE_ELEV, TEAM_COLORS } from '../config.js';
 import { getLang } from '../i18n.js';
+import { ALL_GOODS_IDS } from '../buildings.js';
 import {
   worldToScreen,
   screenToWorld,
@@ -224,31 +225,32 @@ export class Renderer {
     }
   }
 
-  // Forest / stone hill. Size scales with stock; at stock 0 it bottoms out
-  // as a sapling (forest) or a single pebble (stone hill).
+  // Natural resource features. Size scales with stock.
   _drawFeature(ctx, cx, cy, ts, feat) {
     const stock = Math.max(0, Math.min(feat.max, feat.stock));
     const frac = feat.max > 0 ? stock / feat.max : 0;
-    if (feat.kind === 'forest') {
+    const kind = feat.kind;
+
+    if (kind === 'forest') {
       const trunkH = Math.max(2, ts * (0.12 + 0.30 * frac));
       const crownR = Math.max(2.5, ts * (0.14 + 0.30 * frac));
-      // trunk
       ctx.fillStyle = '#7a5230';
       ctx.fillRect(cx - ts * 0.04, cy - trunkH, Math.max(2, ts * 0.08), trunkH);
-      // crown — darker/greener when full, paler sapling when low
-      const green = stock === 0 ? '#9ec47a' : '#3f7a36';
-      ctx.fillStyle = green;
+      ctx.fillStyle = stock === 0 ? '#9ec47a' : '#3f7a36';
       ctx.beginPath();
       ctx.ellipse(cx, cy - trunkH - crownR * 0.6, crownR, crownR * 1.05, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = 'rgba(20,40,16,0.5)';
       ctx.lineWidth = 1;
       ctx.stroke();
-    } else {
-      // stone hill — a clump of rocks; a lone pebble at 0.
+      return;
+    }
+
+    // Rock-family helper (stonehill, coalVein, ironVein, copperVein, tinVein)
+    const drawRocks = (fill, highlight, stroke) => {
       const R = Math.max(3, ts * (0.16 + 0.34 * frac));
-      ctx.fillStyle = '#9aa0a6';
-      ctx.strokeStyle = 'rgba(40,44,50,0.6)';
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = stroke;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(cx - R, cy);
@@ -258,38 +260,111 @@ export class Renderer {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = '#c2c7cc';
+      ctx.fillStyle = highlight;
       ctx.fillRect(cx - R * 0.5, cy - R * 0.5, R * 0.5, R * 0.4);
+    };
+
+    if (kind === 'stonehill')  { drawRocks('#9aa0a6', '#c2c7cc', 'rgba(40,44,50,0.6)'); return; }
+    if (kind === 'coalVein')   { drawRocks('#303030', '#484848', 'rgba(10,10,10,0.8)'); return; }
+    if (kind === 'ironVein')   { drawRocks('#8c4838', '#b86050', 'rgba(60,20,10,0.7)'); return; }
+    if (kind === 'copperVein') { drawRocks('#508868', '#70b090', 'rgba(20,50,30,0.7)'); return; }
+    if (kind === 'tinVein')    { drawRocks('#9898a8', '#c0c0d0', 'rgba(50,50,70,0.6)'); return; }
+
+    if (kind === 'clayPit') {
+      const R = Math.max(3, ts * (0.15 + 0.28 * frac));
+      ctx.fillStyle = frac > 0.4 ? '#c0704a' : '#dfa878';
+      ctx.strokeStyle = 'rgba(80,40,20,0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - R * 0.35, R, R * 0.48, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      return;
     }
+
+    if (kind === 'sandBar') {
+      const R = Math.max(4, ts * (0.18 + 0.26 * frac));
+      ctx.fillStyle = '#dfc870';
+      ctx.strokeStyle = 'rgba(140,100,30,0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - R * 0.28, R, R * 0.38, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      return;
+    }
+
+    if (kind === 'cropField') {
+      const w = Math.max(5, ts * (0.24 + 0.28 * frac));
+      const h = w * 0.48;
+      ctx.fillStyle = frac > 0.5 ? '#5c8c30' : '#8ab850';
+      ctx.fillRect(cx - w / 2, cy - h, w, h);
+      ctx.strokeStyle = 'rgba(30,60,10,0.5)';
+      ctx.lineWidth = 1;
+      const rows = Math.max(2, Math.round(frac * 4 + 1));
+      for (let i = 1; i < rows; i++) {
+        ctx.beginPath();
+        ctx.moveTo(cx - w / 2, cy - h + (h / rows) * i);
+        ctx.lineTo(cx + w / 2, cy - h + (h / rows) * i);
+        ctx.stroke();
+      }
+      return;
+    }
+
+    if (kind === 'pasture') {
+      const w = Math.max(4, ts * (0.2 + 0.26 * frac));
+      const h = w * 0.38;
+      ctx.fillStyle = '#70b84a';
+      ctx.fillRect(cx - w / 2, cy - h, w, h);
+      if (frac > 0.3) {
+        ctx.fillStyle = '#f0e8d0';
+        const count = Math.max(1, Math.round(frac * 3));
+        for (let i = 0; i < count; i++) {
+          const ox = (i - (count - 1) / 2) * (w * 0.32);
+          ctx.beginPath();
+          ctx.arc(cx + ox, cy - h * 0.6, Math.max(1, ts * 0.06), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      return;
+    }
+
+    // fallback
+    ctx.fillStyle = '#aaaaaa';
+    ctx.beginPath();
+    ctx.arc(cx, cy - ts * 0.1, Math.max(2, ts * 0.08), 0, Math.PI * 2);
+    ctx.fill();
   }
 
-  // Warehouse / logging camp / stone cutter — a small coloured box with a
-  // team-tinted roof and a stored-count badge.
+  // Building — a small coloured box with a team-tinted roof and a stored-count badge.
   _drawBuilding(ctx, cx, cy, ts, b, teams) {
     const w = Math.max(8, ts * 0.7);
     const h = Math.max(7, ts * 0.55);
-    const roof = {
-      warehouse: '#c8985a',
-      loggingCamp: '#6f8f4a',
-      stoneCutter: '#8a8f96',
-    }[b.kind] || '#b0b0b0';
-    // walls
+    const ROOF = {
+      warehouse: '#c8985a', loggingCamp: '#6f8f4a', stoneCutter: '#8a8f96',
+      clayMine: '#b06840', sandMine: '#d8c050', coalMine: '#484848',
+      farm: '#60a840', ironMine: '#8c4838', copperMine: '#4a8868',
+      tinMine: '#8898b0', ranch: '#a87850',
+      sawmill: '#c0a070', charcoalKiln: '#383838', kiln: '#d06030',
+      smelter: '#b85020', alloyForge: '#b09050', ropeMaker: '#c8b870',
+      windmill: '#7090c0', weavery: '#9060b0', smithy: '#606870',
+      precisionWorkshop: '#5080a0',
+    };
+    const roof = ROOF[b.kind] || '#b0b0b0';
     ctx.fillStyle = '#e3d6bd';
     ctx.fillRect(cx - w / 2, cy - h, w, h);
     ctx.strokeStyle = 'rgba(40,30,16,0.7)';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(cx - w / 2, cy - h, w, h);
-    // roof band
     ctx.fillStyle = roof;
     ctx.fillRect(cx - w / 2, cy - h, w, h * 0.4);
-    // team chip
     const teamColor = (teams && teams[b.teamId]?.color);
     if (teamColor) {
       ctx.fillStyle = teamColor.fill;
       ctx.fillRect(cx - w / 2, cy - h, w * 0.22, h * 0.4);
     }
-    // stored count
-    const n = b.wood + b.stone;
+    let n = 0;
+    for (const g of ALL_GOODS_IDS) n += b[g] || 0;
     if (n > 0) {
       ctx.fillStyle = '#23303a';
       ctx.font = `${Math.max(7, Math.round(ts * 0.42))}px sans-serif`;
@@ -393,19 +468,27 @@ export class Renderer {
     ctx.fillStyle = '#e8d2b0';
     ctx.fill();
     ctx.stroke();
-    // carried floor item marker, tinted by what's in hand
+    // Goods color map for carried/load display.
+    const GOOD_COLOR = {
+      wood: '#9c7338', stone: '#9aa0a6', plank: '#a07840', brick: '#c0603c',
+      charcoal: '#383838', iron: '#607080', copper: '#c86420', tin: '#909898',
+      bronze: '#b08040', coal: '#404040', clay: '#c87a40', sand: '#dfc060',
+      glass: '#80c0d8', rope: '#c8b074', cloth: '#a060c0', leather: '#9c7048',
+      grain: '#d4b060', flour: '#e8e0c0', tool: '#606870', gear: '#808090',
+      ironOre: '#8c5050', copperOre: '#508868', tinOre: '#909898',
+    };
+    // carried floor item marker
     if (w.carrying) {
       const s = r * 0.95;
-      const t = w.carrying.type;
-      ctx.fillStyle = t === 'stone' ? '#9aa0a6' : t === 'wood' ? '#9c7338' : '#c79a5a';
+      ctx.fillStyle = GOOD_COLOR[w.carrying.type] || '#c79a5a';
       ctx.fillRect(cx - s / 2, cy - r * 3.5, s, s);
       ctx.strokeStyle = 'rgba(40,28,12,0.7)';
       ctx.strokeRect(cx - s / 2, cy - r * 3.5, s, s);
     }
-    // trade haul: a bigger crate with the carried quantity
+    // trade/haul load: a bigger crate with the carried quantity
     if (w.load && w.load.qty > 0) {
       const s = r * 1.6;
-      ctx.fillStyle = w.load.good === 'stone' ? '#9aa0a6' : '#9c7338';
+      ctx.fillStyle = GOOD_COLOR[w.load.good] || '#9c7338';
       ctx.fillRect(cx - s / 2, cy - r * 4.0, s, s * 0.85);
       ctx.strokeStyle = 'rgba(40,28,12,0.8)';
       ctx.lineWidth = 1;

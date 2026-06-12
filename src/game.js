@@ -18,11 +18,21 @@ import {
   WORKER_SPEED,
   FOREST_COUNT,
   STONEHILL_COUNT,
+  CLAY_PIT_COUNT,
+  SAND_BAR_COUNT,
+  COAL_VEIN_COUNT,
+  CROP_FIELD_COUNT,
+  IRON_VEIN_COUNT,
+  COPPER_VEIN_COUNT,
+  TIN_VEIN_COUNT,
+  PASTURE_COUNT,
   HARVEST_NEAR,
   BUILD_COST,
   DRAIN_INTERVAL,
   BUILD_AUTO_INTERVAL,
   WAREHOUSE_AUTO_CAP,
+  PROC_INTERVAL,
+  PROC_OUTPUT_CAP,
 } from './config.js';
 import { mulberry32 } from './core/rng.js';
 import { generateMap, mapStats } from './map/mapGenerator.js';
@@ -34,8 +44,13 @@ import { clockInfo, temperatureAt, daylightAt, SEASON_TINT } from './season.js';
 import { createTeam, clampTeamCount, defaultScriptFor } from './teams.js';
 import { Worker } from './entities/worker.js';
 import { createItem } from './items.js';
-import { createForest, createStoneHill, harvestFeature, regenFeature, canHarvest } from './features.js';
-import { createBuilding, isFull, deposit, take } from './buildings.js';
+import {
+  createForest, createStoneHill,
+  createClayPit, createSandBar, createCoalVein, createCropField,
+  createIronVein, createCopperVein, createTinVein, createPasture,
+  harvestFeature, regenFeature, canHarvest,
+} from './features.js';
+import { createBuilding, isFull, deposit, take, EXTRACTION_BUILDINGS, PROC_RECIPES } from './buildings.js';
 import { createTradePost, tickTradePost, sellUnits, buyUnits, buyPrice } from './trade.js';
 import { runScript } from './scripts.js';
 import { TRADE_LOAD, ROAD_INTERVAL, ROAD_BUILD_TIME } from './config.js';
@@ -117,9 +132,17 @@ export class Game {
     this.workers = [];
     this._drainTimer = 0;
 
-    // Scatter forests and stone hills on empty land (seeded).
-    this._scatterFeatures(FOREST_COUNT, createForest);
-    this._scatterFeatures(STONEHILL_COUNT, createStoneHill);
+    // Scatter natural resources on empty land (seeded).
+    this._scatterFeatures(FOREST_COUNT,      createForest);
+    this._scatterFeatures(STONEHILL_COUNT,   createStoneHill);
+    this._scatterFeatures(CLAY_PIT_COUNT,    createClayPit);
+    this._scatterFeatures(SAND_BAR_COUNT,    createSandBar);
+    this._scatterFeatures(COAL_VEIN_COUNT,   createCoalVein);
+    this._scatterFeatures(CROP_FIELD_COUNT,  createCropField);
+    this._scatterFeatures(IRON_VEIN_COUNT,   createIronVein);
+    this._scatterFeatures(COPPER_VEIN_COUNT, createCopperVein);
+    this._scatterFeatures(TIN_VEIN_COUNT,    createTinVein);
+    this._scatterFeatures(PASTURE_COUNT,     createPasture);
 
     // One trade post per map edge, at a seeded random spot along that edge.
     this._placeTradePosts();
@@ -497,6 +520,9 @@ export class Game {
       this._autoBuildRoads(team, simDt);
       this._autoBuildStructures(team, simDt);
     }
+
+    // Processing buildings convert goods from team.stock on their own timer.
+    this._tickProcessors(simDt);
   }
 
   // Fallback drain for teams with fewer than 3 workers (no dedicated hauler).
@@ -505,8 +531,10 @@ export class Game {
     for (const b of this.buildings) {
       const team = this.teams[b.teamId];
       if (!team || team.workers.length >= 3) continue;
-      if (b.kind === 'loggingCamp' && b.wood > 0) { b.wood -= 1; team.stock.wood += 1; }
-      else if (b.kind === 'stoneCutter' && b.stone > 0) { b.stone -= 1; team.stock.stone += 1; }
+      const spec = EXTRACTION_BUILDINGS[b.kind];
+      if (!spec) continue;
+      const g = spec.good;
+      if ((b[g] || 0) > 0) { b[g] -= 1; team.stock[g] = (team.stock[g] || 0) + 1; }
     }
   }
 
@@ -614,10 +642,10 @@ export class Game {
   }
 
   _assignJob(worker, team) {
-    const log = this._pickCamp(team, 'loggingCamp', 'forest', worker);
-    if (log) { this._beginJob(worker, 'log', log); return true; }
-    const mine = this._pickCamp(team, 'stoneCutter', 'stonehill', worker);
-    if (mine) { this._beginJob(worker, 'mine', mine); return true; }
+    for (const [kind, spec] of Object.entries(EXTRACTION_BUILDINGS)) {
+      const camp = this._pickCamp(team, kind, spec.featureKind, worker);
+      if (camp) { this._beginJob(worker, kind, camp); return true; }
+    }
     return false;
   }
 
@@ -754,8 +782,8 @@ export class Game {
 
   _pickCampWithStock(team) {
     for (const b of team.buildings) {
-      if (b.kind === 'loggingCamp' && b.wood > 0) return { x: b.x, y: b.y, good: 'wood' };
-      if (b.kind === 'stoneCutter' && b.stone > 0) return { x: b.x, y: b.y, good: 'stone' };
+      const spec = EXTRACTION_BUILDINGS[b.kind];
+      if (spec && (b[spec.good] || 0) > 0) return { x: b.x, y: b.y, good: spec.good };
     }
     return null;
   }
@@ -831,6 +859,27 @@ export class Game {
       }
       worker.load = null;
       this._endHaul(worker);
+    }
+  }
+
+  // --- processing buildings (auto-convert team.stock on a timer) -----------
+
+  _tickProcessors(simDt) {
+    for (const b of this.buildings) {
+      const recipes = PROC_RECIPES[b.kind];
+      if (!recipes) continue;
+      const team = this.teams[b.teamId];
+      if (!team) continue;
+      b._procTimer = (b._procTimer || 0) + simDt;
+      if (b._procTimer < PROC_INTERVAL) continue;
+      b._procTimer -= PROC_INTERVAL;
+      for (const r of recipes) {
+        if (!r.inputs.every(([g, qty]) => (team.stock[g] || 0) >= qty)) continue;
+        if ((team.stock[r.output] || 0) >= PROC_OUTPUT_CAP) continue;
+        for (const [g, qty] of r.inputs) team.stock[g] -= qty;
+        team.stock[r.output] = (team.stock[r.output] || 0) + 1;
+        break;
+      }
     }
   }
 

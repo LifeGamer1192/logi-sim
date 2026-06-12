@@ -1,43 +1,95 @@
-// Built facilities: warehouse, logging camp, stone cutter.
+// Built facilities: warehouse (storage), extraction buildings (harvest from
+// nearby features), and processing buildings (convert goods from team.stock).
 //
-//   warehouse   — stores wood + stone (mixed), cap WAREHOUSE_CAP.
-//   loggingCamp — stores wood only,           cap LOGGING_CAP.
-//   stoneCutter — stores stone only,          cap QUARRY_CAP.
-//
-// Every building costs BUILD_COST (wood 1 + stone 1) to put up, drawn from
-// the founding team's existing stock (see takeFromTeam).
+//   warehouse   — accepts any good; cap WAREHOUSE_CAP.
+//   extraction  — each kind accepts one good from EXTRACTION_BUILDINGS spec.
+//   processing  — auto-convert team.stock on a timer; no physical storage.
 
-import { WAREHOUSE_CAP, LOGGING_CAP, QUARRY_CAP } from './config.js';
+import { WAREHOUSE_CAP, LOGGING_CAP } from './config.js';
 
-export const BUILDING_KINDS = ['warehouse', 'loggingCamp', 'stoneCutter'];
+/** All goods IDs that may be physically stored in buildings. */
+export const ALL_GOODS_IDS = [
+  'wood', 'stone', 'plank', 'brick', 'charcoal', 'iron', 'copper', 'tin',
+  'bronze', 'coal', 'clay', 'sand', 'glass', 'rope', 'cloth', 'leather',
+  'grain', 'flour', 'tool', 'gear', 'ironOre', 'copperOre', 'tinOre',
+];
+
+const ALL_GOODS_SET = new Set(ALL_GOODS_IDS);
+
+/** Extraction building kind → { featureKind, good }. */
+export const EXTRACTION_BUILDINGS = {
+  loggingCamp:  { featureKind: 'forest',     good: 'wood' },
+  stoneCutter:  { featureKind: 'stonehill',  good: 'stone' },
+  clayMine:     { featureKind: 'clayPit',    good: 'clay' },
+  sandMine:     { featureKind: 'sandBar',    good: 'sand' },
+  coalMine:     { featureKind: 'coalVein',   good: 'coal' },
+  farm:         { featureKind: 'cropField',  good: 'grain' },
+  ironMine:     { featureKind: 'ironVein',   good: 'ironOre' },
+  copperMine:   { featureKind: 'copperVein', good: 'copperOre' },
+  tinMine:      { featureKind: 'tinVein',    good: 'tinOre' },
+  ranch:        { featureKind: 'pasture',    good: 'leather' },
+};
+
+/**
+ * Processing building recipes. Each recipe fires once per PROC_INTERVAL,
+ * consuming inputs from and depositing the output into the team treasury.
+ */
+export const PROC_RECIPES = {
+  sawmill:           [{ inputs: [['wood', 2]],                     output: 'plank' }],
+  charcoalKiln:      [{ inputs: [['wood', 3]],                     output: 'charcoal' }],
+  kiln:              [
+    { inputs: [['clay', 2]],                                       output: 'brick' },
+    { inputs: [['sand', 3]],                                       output: 'glass' },
+  ],
+  smelter:           [
+    { inputs: [['ironOre', 1], ['charcoal', 1]],                   output: 'iron' },
+    { inputs: [['copperOre', 1], ['charcoal', 1]],                 output: 'copper' },
+    { inputs: [['tinOre', 1], ['charcoal', 1]],                    output: 'tin' },
+  ],
+  alloyForge:        [{ inputs: [['copper', 1], ['tin', 1]],       output: 'bronze' }],
+  ropeMaker:         [{ inputs: [['grain', 2]],                    output: 'rope' }],
+  windmill:          [{ inputs: [['grain', 2]],                    output: 'flour' }],
+  weavery:           [{ inputs: [['grain', 3]],                    output: 'cloth' }],
+  smithy:            [{ inputs: [['iron', 2], ['plank', 1]],       output: 'tool' }],
+  precisionWorkshop: [{ inputs: [['bronze', 2], ['tool', 1]],      output: 'gear' }],
+};
+
+export const BUILDING_KINDS = [
+  'warehouse',
+  ...Object.keys(EXTRACTION_BUILDINGS),
+  ...Object.keys(PROC_RECIPES),
+];
 
 export function capFor(kind) {
   if (kind === 'warehouse') return WAREHOUSE_CAP;
-  if (kind === 'loggingCamp') return LOGGING_CAP;
-  if (kind === 'stoneCutter') return QUARRY_CAP;
+  if (EXTRACTION_BUILDINGS[kind]) return LOGGING_CAP;
   return 0;
 }
 
-/** Which item types a building will store. */
+/** Which item types a building accepts via physical deposit. */
 export function accepts(building, itemType) {
-  if (building.kind === 'warehouse') return itemType === 'wood' || itemType === 'stone';
-  if (building.kind === 'loggingCamp') return itemType === 'wood';
-  if (building.kind === 'stoneCutter') return itemType === 'stone';
+  const spec = EXTRACTION_BUILDINGS[building.kind];
+  if (spec) return itemType === spec.good;
+  if (building.kind === 'warehouse') return ALL_GOODS_SET.has(itemType);
   return false;
 }
 
 export function createBuilding(kind, teamId, init = {}) {
-  return {
-    kind,
-    teamId,
-    wood: init.wood || 0,
-    stone: init.stone || 0,
-    cap: capFor(kind),
-  };
+  const b = { kind, teamId, cap: capFor(kind) };
+  const spec = EXTRACTION_BUILDINGS[kind];
+  if (spec) {
+    b[spec.good] = init[spec.good] || 0;
+  } else if (kind === 'warehouse') {
+    b.wood = init.wood || 0;
+    b.stone = init.stone || 0;
+  }
+  return b;
 }
 
 export function total(building) {
-  return building.wood + building.stone;
+  let t = 0;
+  for (const g of ALL_GOODS_IDS) t += building[g] || 0;
+  return t;
 }
 
 export function isFull(building) {
@@ -51,7 +103,7 @@ export function isFull(building) {
 export function deposit(building, itemType) {
   if (!accepts(building, itemType)) return false;
   if (isFull(building)) return false;
-  building[itemType] += 1;
+  building[itemType] = (building[itemType] || 0) + 1;
   return true;
 }
 
@@ -66,7 +118,7 @@ export function take(building, itemType) {
 export function teamStock(buildings) {
   let wood = 0;
   let stone = 0;
-  for (const b of buildings) { wood += b.wood; stone += b.stone; }
+  for (const b of buildings) { wood += b.wood || 0; stone += b.stone || 0; }
   return { wood, stone };
 }
 
@@ -75,7 +127,6 @@ export function teamStock(buildings) {
  * it (warehouses first, then the matching camp). Returns true on success.
  */
 export function takeFromTeam(buildings, itemType) {
-  // Prefer warehouses so camps stay free to keep harvesting.
   const ordered = [...buildings].sort((a, b) =>
     (a.kind === 'warehouse' ? 0 : 1) - (b.kind === 'warehouse' ? 0 : 1));
   for (const b of ordered) {
