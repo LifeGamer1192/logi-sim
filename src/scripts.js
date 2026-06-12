@@ -16,7 +16,8 @@ export const SCRIPTS = {
 
 // 売却優先順位：高価値品から順に余剰分を売る
 const SELL_PRIORITY = [
-  'gear', 'tool', 'bronze', 'cotton', 'iron', 'rice', 'copper', 'tin', 'glass', 'brick',
+  'gear', 'canvas', 'tool', 'bronze', 'cottonCloth', 'cotton', 'iron', 'rice',
+  'copper', 'tin', 'thread', 'glass', 'brick',
   'plank', 'charcoal', 'wheat', 'potato', 'cloth', 'leather', 'rope', 'flour',
   'coal', 'turnip', 'grain', 'clay', 'sand', 'stone', 'wood',
 ];
@@ -29,6 +30,8 @@ const KEEP_MIN = {
   copper:   2,  // 合金炉バッファ
   tin:      2,  // 合金炉バッファ
   bronze:   2,  // 精密工房バッファ
+  thread:   2,  // weavery の cottonCloth 製造バッファ
+  cottonCloth: 2, // weavery の canvas 製造バッファ
   grain:    5,  // 複数加工所への共通投入素材
   wheat:    5,  // 植え付け用確保
   potato:   5,
