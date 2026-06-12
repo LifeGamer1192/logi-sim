@@ -714,7 +714,7 @@ function describeTile(tile) {
     const ripe = tile.crop.growth >= 1 ? ' (ready)' : '';
     return `${t('good.' + tile.crop.kind)} ${pct}%${ripe}`;
   }
-  if (tile.item) return t('good.' + (tile.item.type === 'wood' || tile.item.type === 'stone' ? tile.item.type : 'package'));
+  if (tile.item) return t('good.' + tile.item.type);
   const base = tile.type === TileType.WATER ? t('legend.water') : t('legend.richSoil');
   if (tile.road) return `${base} · ${t(tile.road === 'stone' ? 'build.stoneRoad' : 'build.woodRoad')}`;
   return base;
