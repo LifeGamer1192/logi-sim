@@ -187,6 +187,8 @@ export const PROC_OUTPUT_CAP = 50;
 // --- transport vehicles ---------------------------------------------------
 // Number of wheelbarrows an auto-script team tries to maintain.
 export const CART_AUTO_COUNT = 2;
+// Manhattan-distance radius an idle worker scans for floor items to clean up.
+export const FLOOR_PICKUP_RADIUS = 20;
 
 // --- economy & trade (logi-sim) -------------------------------------------
 // Each team owns a treasury (currency + bulk wood/stone). Players start rich

@@ -37,6 +37,7 @@ import {
   CROP_WATER_RANGE,
   CROP_AUTO_INTERVAL,
   CROP_MAX_PLANTED,
+  FLOOR_PICKUP_RADIUS,
 } from './config.js';
 import { mulberry32 } from './core/rng.js';
 import { generateMap, mapStats } from './map/mapGenerator.js';
@@ -657,8 +658,11 @@ export class Game {
       }
     }
     if (worker.job === 'farmCrop') { this._stepFarmCrop(worker, team, simDt); return; }
+    if (worker.job === 'pickupFloor') { this._stepPickupFloor(worker, team, simDt); return; }
 
     if (!worker.job) {
+      const floorPos = this._findNearestFloorItem(worker);
+      if (floorPos) { this._startPickupFloor(worker, floorPos); return; }
       if (!this._assignJob(worker, team)) return; // nothing to do — idle
     }
 
@@ -705,6 +709,70 @@ export class Game {
           this._endJob(worker);
         }
       }
+    }
+  }
+
+  _findNearestFloorItem(worker) {
+    const R = FLOOR_PICKUP_RADIUS;
+    const cx = worker.x, cy = worker.y;
+    let best = null, bestD = Infinity;
+    for (let dy = -R; dy <= R; dy++) {
+      for (let dx = -R; dx <= R; dx++) {
+        const tx = cx + dx, ty = cy + dy;
+        if (tx < 0 || ty < 0 || tx >= this.map.cols || ty >= this.map.rows) continue;
+        if (!this.map.tiles[ty][tx].item) continue;
+        const d = Math.abs(dx) + Math.abs(dy);
+        if (d < bestD) { bestD = d; best = { x: tx, y: ty }; }
+      }
+    }
+    return best;
+  }
+
+  _startPickupFloor(worker, pos) {
+    this._endJob(worker);
+    worker.job = 'pickupFloor';
+    worker.haul = { phase: 'toItem', itemX: pos.x, itemY: pos.y };
+    this._routeTo(worker, pos.x, pos.y);
+  }
+
+  _stepPickupFloor(worker, team, simDt) {
+    const h = worker.haul;
+    if (!h) { this._endJob(worker); return; }
+
+    if (h.phase === 'toItem') {
+      if (!this._advanceWorker(worker, simDt)) return;
+      const tile = this.map.tiles[h.itemY][h.itemX];
+      if (tile.item && !worker.carrying) {
+        worker.pickUp(tile.item);
+        tile.item = null;
+        const wh = this._nearestWarehouse(team, worker.x, worker.y);
+        if (!wh) { worker.dropCarried(this.map); this._endJob(worker); return; }
+        h.warehouseX = wh.x; h.warehouseY = wh.y;
+        h.phase = 'toWarehouse';
+        this._routeTo(worker, wh.x, wh.y);
+      } else {
+        this._endJob(worker); // item already claimed by another worker
+      }
+      return;
+    }
+
+    if (h.phase === 'toWarehouse') {
+      if (!this._advanceWorker(worker, simDt)) return;
+      const wh = this._buildingAt(h.warehouseX, h.warehouseY);
+      const type = worker.carrying?.type;
+      if (type && wh && !isFull(wh) && deposit(wh, type)) {
+        team.stock[type] = (team.stock[type] || 0) + 1;
+        worker.carrying = null;
+      } else {
+        const alt = this._nearestWarehouse(team, worker.x, worker.y);
+        if (alt) {
+          h.warehouseX = alt.x; h.warehouseY = alt.y;
+          this._routeTo(worker, alt.x, alt.y);
+          return;
+        }
+        worker.dropCarried(this.map); // no warehouse available
+      }
+      this._endJob(worker);
     }
   }
 
