@@ -50,7 +50,8 @@ import {
   createIronVein, createCopperVein, createTinVein, createPasture,
   harvestFeature, regenFeature, canHarvest,
 } from './features.js';
-import { createBuilding, isFull, deposit, take, EXTRACTION_BUILDINGS, PROC_RECIPES } from './buildings.js';
+import { createBuilding, isFull, deposit, take, total, EXTRACTION_BUILDINGS, PROC_RECIPES } from './buildings.js';
+import { PROC_BUILD_PREREQS } from './strategy.js';
 import { createTradePost, tickTradePost, sellUnits, buyUnits, buyPrice } from './trade.js';
 import { runScript } from './scripts.js';
 import { TRADE_LOAD, ROAD_INTERVAL, ROAD_BUILD_TIME } from './config.js';
@@ -909,18 +910,23 @@ export class Game {
       if (spot && this.build(team.id, kind, spot.x, spot.y)) return;
     }
 
-    // 2. 加工 building：依存順に1種類ずつ建築
+    // 2. 加工 building：前提条件を満たす種類から依存順に建築
     for (const kind of Game.PROC_BUILD_ORDER) {
       if (team.buildings.some(b => b.kind === kind)) continue;
+      const prereq = PROC_BUILD_PREREQS[kind];
+      if (prereq && !prereq(team)) continue;  // 上流 building が未整備
       const spot = this._bfsFind(team.depot.x, team.depot.y, (x, y) => this.canBuildAt(x, y));
       if (spot && this.build(team.id, kind, spot.x, spot.y)) return;
     }
 
-    // 3. 倉庫を上限まで増設
+    // 3. 倉庫：既存倉庫の平均充填率が 70% 以上になったら上限まで増設
     const warehouses = team.buildings.filter(b => b.kind === 'warehouse');
-    if (warehouses.length < WAREHOUSE_AUTO_CAP) {
-      const spot = this._bfsFind(team.depot.x, team.depot.y, (x, y) => this.canBuildAt(x, y));
-      if (spot) this.build(team.id, 'warehouse', spot.x, spot.y);
+    if (warehouses.length < WAREHOUSE_AUTO_CAP && warehouses.length > 0) {
+      const avgFill = warehouses.reduce((s, w) => s + total(w) / w.cap, 0) / warehouses.length;
+      if (avgFill >= 0.7) {
+        const spot = this._bfsFind(team.depot.x, team.depot.y, (x, y) => this.canBuildAt(x, y));
+        if (spot) this.build(team.id, 'warehouse', spot.x, spot.y);
+      }
     }
   }
 
