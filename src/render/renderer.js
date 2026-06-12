@@ -24,12 +24,17 @@ import {
 
 const lerp = (a, b, t) => a + (b - a) * t;
 
+// Color helper: takes numeric RGB arrays, returns 'rgb(r,g,b)' string.
+// mix() intentionally accepts ARRAYS only — never pass a pre-built string.
 function mix(c1, c2, t) {
-  const r = Math.round(lerp(c1[0], c2[0], t));
-  const g = Math.round(lerp(c1[1], c2[1], t));
-  const b = Math.round(lerp(c1[2], c2[2], t));
-  return `rgb(${r},${g},${b})`;
+  return `rgb(${Math.round(lerp(c1[0],c2[0],t))},${Math.round(lerp(c1[1],c2[1],t))},${Math.round(lerp(c1[2],c2[2],t))})`;
 }
+
+// Pre-allocated module-level palette arrays (avoid re-creation on each call).
+const TERRAIN_DL = [210, 190, 138]; // dry-low
+const TERRAIN_WL = [82,  148,  62]; // wet-low
+const TERRAIN_DH = [168, 158, 128]; // dry-high
+const TERRAIN_WH = [94,  154,  74]; // wet-high
 
 const WATER_TINT = {
   ocean: { shallow: [92, 152, 200], deep: [28, 66, 122] },
@@ -37,22 +42,21 @@ const WATER_TINT = {
   river: { shallow: [120, 156, 180], deep: [50, 80, 110] },
 };
 function waterColor(tile) {
-  const kind = tile.waterKind || 'ocean';
-  const tint = WATER_TINT[kind] || WATER_TINT.ocean;
+  const tint = WATER_TINT[tile.waterKind || 'ocean'] || WATER_TINT.ocean;
   return mix(tint.shallow, tint.deep, 1 - tile.elevation);
 }
 
 const VIEW_MODES = {
   terrain(tile) {
     if (tile.type === TileType.WATER) return waterColor(tile);
-    const lvl = Math.min(1, (tile.level || 0) / 5);
+    // Direct bilinear blend — no intermediate string objects.
+    // Fix: the old nested mix(mix(arr,arr,t),mix(arr,arr,t),t2) silently broke
+    // because mix() returns a string and the outer call indexed string chars.
+    const t2 = Math.min(1, (tile.level || 0) / 5) * 0.55;
     const f = tile.fertility;
-    // 4-corner blend: elevation(low↔high) × fertility(dry↔lush)
-    const dryLow  = [210, 190, 138];
-    const wetLow  = [82,  148,  62];
-    const dryHigh = [168, 158, 128];
-    const wetHigh = [94,  154,  74];
-    return mix(mix(dryLow, wetLow, f), mix(dryHigh, wetHigh, f), lvl * 0.55);
+    return `rgb(${Math.round(lerp(lerp(TERRAIN_DL[0],TERRAIN_WL[0],f),lerp(TERRAIN_DH[0],TERRAIN_WH[0],f),t2))},` +
+           `${Math.round(lerp(lerp(TERRAIN_DL[1],TERRAIN_WL[1],f),lerp(TERRAIN_DH[1],TERRAIN_WH[1],f),t2))},` +
+           `${Math.round(lerp(lerp(TERRAIN_DL[2],TERRAIN_WL[2],f),lerp(TERRAIN_DH[2],TERRAIN_WH[2],f),t2))})`;
   },
   fertility(tile) {
     if (tile.type === TileType.WATER) return 'rgb(45,52,64)';
@@ -80,6 +84,9 @@ export class Renderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.ts = 20;
+    // Cached per-frame derived values (invalidated when ts changes)
+    this._badgeFontTs = -1;
+    this._badgeFont   = '';
   }
 
   draw(scene) {
@@ -89,113 +96,115 @@ export class Renderer {
     const ts = this.ts;
     const cw = this.canvas.width;
     const ch = this.canvas.height;
-    const colorOf = VIEW_MODES[mode] || VIEW_MODES.terrain;
+
+    // ── Badge font cache ─────────────────────────────────────────────────
+    if (this._badgeFontTs !== ts) {
+      this._badgeFontTs = ts;
+      this._badgeFont = `bold ${Math.max(7, Math.round(ts * 0.42))}px sans-serif`;
+    }
+
+    // ── Level-of-detail flags ─────────────────────────────────────────────
+    // Skip expensive per-tile drawing at tiny zoom levels where the output
+    // is sub-pixel or visually indistinguishable.
+    const doStroke = ts >= 12;  // outline stroke on tile tops & cliff faces
+    const doCliffs = ts >= 8;   // cliff face polygons (invisible at ts=7)
+    const doRoads  = ts >= 10;  // road inset diamond
+
+    // ── Projection precomputation ─────────────────────────────────────────
+    // worldToScreen inlined: for corner (wx,wy,e):
+    //   screen_x = (wx - wy) * hw + BASE_SX
+    //   screen_y = (wx + wy) * hh + BASE_SY - e * elevPx
+    const hw     = ts * 0.5;
+    const hh     = ts * 0.25;
     const elevPx = ts * ISO_ELEV_RATIO;
+    const camCX  = camera.x + camera.viewCols * 0.5;
+    const camCY  = camera.y + camera.viewRows * 0.5;
+    const BASE_SX = (camCY - camCX) * hw + cw * 0.5;
+    const BASE_SY = (-camCX - camCY) * hh + ch * 0.5;
+
+    // ── Color cache ───────────────────────────────────────────────────────
+    // Tile colors are computed once on first use and stored on the tile
+    // object itself (per view-mode key). Tile properties never change after
+    // map generation, so no invalidation is needed.
+    const colorKey = '_cc_' + mode;
+    const colorFn  = VIEW_MODES[mode] || VIEW_MODES.terrain;
+    const colorOf  = (tile) => tile[colorKey] || (tile[colorKey] = colorFn(tile));
 
     ctx.clearRect(0, 0, cw, ch);
+    ctx.lineWidth = 1;
 
-    const proj = (wx, wy, e) => worldToScreen(wx, wy, camera, ts, cw, ch, e);
-
-    // Visible-tile bounding box from the four unprojected canvas corners.
-    const corners = [
-      screenToWorld(0, 0, camera, ts, cw, ch),
-      screenToWorld(cw, 0, camera, ts, cw, ch),
-      screenToWorld(0, ch, camera, ts, cw, ch),
-      screenToWorld(cw, ch, camera, ts, cw, ch),
-    ];
-    const minX = Math.max(0, Math.floor(Math.min(...corners.map((c) => c.x))) - 1);
-    const maxX = Math.min(map.cols - 1, Math.ceil(Math.max(...corners.map((c) => c.x))) + 1);
-    // Pad the top generously: tall terraces above the viewport drop faces
-    // down into view. Pad the bottom a little for the same reason.
-    const minY = Math.max(0, Math.floor(Math.min(...corners.map((c) => c.y))) - 8);
-    const maxY = Math.min(map.rows - 1, Math.ceil(Math.max(...corners.map((c) => c.y))) + 2);
+    // ── Visible-tile bounding box ─────────────────────────────────────────
+    const c0 = screenToWorld(0,  0,  camera, ts, cw, ch);
+    const c1 = screenToWorld(cw, 0,  camera, ts, cw, ch);
+    const c2 = screenToWorld(0,  ch, camera, ts, cw, ch);
+    const c3 = screenToWorld(cw, ch, camera, ts, cw, ch);
+    const minX = Math.max(0, Math.floor(Math.min(c0.x, c1.x, c2.x, c3.x)) - 1);
+    const maxX = Math.min(map.cols - 1, Math.ceil(Math.max(c0.x, c1.x, c2.x, c3.x)) + 1);
+    const minY = Math.max(0, Math.floor(Math.min(c0.y, c1.y, c2.y, c3.y)) - 8);
+    const maxY = Math.min(map.rows - 1, Math.ceil(Math.max(c0.y, c1.y, c2.y, c3.y)) + 2);
 
     const tiles = map.tiles;
-    const cols = map.cols;
-    const rows = map.rows;
-    const neighborElev = (nx, ny) => {
-      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) return BASE_ELEV;
-      return tiles[ny][nx].elevation;
-    };
-    const isBorder = (nx, ny) => nx < 0 || ny < 0 || nx >= cols || ny >= rows;
+    const cols  = map.cols;
+    const rows  = map.rows;
 
-    // --- terrain: back-to-front, faces then top -------------------------
+    // ── Terrain pass ──────────────────────────────────────────────────────
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
         const tile = tiles[y][x];
-        const e = tile.elevation;
-        const back  = proj(x,     y,     e);
-        const right = proj(x + 1, y,     e);
-        const front = proj(x + 1, y + 1, e);
-        const left  = proj(x,     y + 1, e);
+        const e  = tile.elevation;
 
-        // Front-right face → neighbour (x+1, y).
-        const erR = neighborElev(x + 1, y);
-        if (e > erR + 1e-4) {
-          const lowR  = proj(x + 1, y,     erR);
-          const lowF  = proj(x + 1, y + 1, erR);
-          if (isBorder(x + 1, y)) {
-            ctx.fillStyle = FACE_BASE;
-          } else {
-            const gR = ctx.createLinearGradient(right.x, right.y, lowF.x, lowF.y);
-            gR.addColorStop(0, FACE_SHADED); gR.addColorStop(1, FACE_SHADED2);
-            ctx.fillStyle = gR;
+        // Inline corner positions — no function calls, no object allocation.
+        // Back=(bx,by)  Right=(bx+hw,by+hh)  Front=(bx,by+2hh)  Left=(bx-hw,by+hh)
+        const bx = (x - y) * hw + BASE_SX;
+        const by = (x + y) * hh + BASE_SY - e * elevPx;
+        const rx = bx + hw, ry = by + hh;
+        const fx = bx,      fy = by + hh * 2;
+        const lx = bx - hw, ly = ry;
+
+        if (doCliffs) {
+          // Front-right face (cliff toward x+1 neighbour).
+          const erR = (x + 1 < cols) ? tiles[y][x + 1].elevation : BASE_ELEV;
+          if (e > erR + 1e-4) {
+            const dR = (e - erR) * elevPx;
+            ctx.fillStyle = (x + 1 >= cols) ? FACE_BASE : FACE_SHADED;
+            ctx.beginPath();
+            ctx.moveTo(rx, ry);  ctx.lineTo(fx, fy);
+            ctx.lineTo(fx, fy + dR); ctx.lineTo(rx, ry + dR);
+            ctx.closePath(); ctx.fill();
+            if (doStroke) { ctx.strokeStyle = OUTLINE; ctx.stroke(); }
           }
-          ctx.beginPath();
-          ctx.moveTo(right.x, right.y);
-          ctx.lineTo(front.x, front.y);
-          ctx.lineTo(lowF.x, lowF.y);
-          ctx.lineTo(lowR.x, lowR.y);
-          ctx.closePath();
-          ctx.fill();
-          ctx.strokeStyle = OUTLINE;
-          ctx.stroke();
-        }
-        // Front-left face → neighbour (x, y+1).
-        const elL = neighborElev(x, y + 1);
-        if (e > elL + 1e-4) {
-          const lowL  = proj(x,     y + 1, elL);
-          const lowF  = proj(x + 1, y + 1, elL);
-          if (isBorder(x, y + 1)) {
-            ctx.fillStyle = FACE_BASE;
-          } else {
-            const gL = ctx.createLinearGradient(left.x, left.y, lowF.x, lowF.y);
-            gL.addColorStop(0, FACE_LIT); gL.addColorStop(1, FACE_LIT2);
-            ctx.fillStyle = gL;
+          // Front-left face (cliff toward y+1 neighbour).
+          const elL = (y + 1 < rows) ? tiles[y + 1][x].elevation : BASE_ELEV;
+          if (e > elL + 1e-4) {
+            const dL = (e - elL) * elevPx;
+            ctx.fillStyle = (y + 1 >= rows) ? FACE_BASE : FACE_LIT;
+            ctx.beginPath();
+            ctx.moveTo(lx, ly);  ctx.lineTo(fx, fy);
+            ctx.lineTo(fx, fy + dL); ctx.lineTo(lx, ly + dL);
+            ctx.closePath(); ctx.fill();
+            if (doStroke) { ctx.strokeStyle = OUTLINE; ctx.stroke(); }
           }
-          ctx.beginPath();
-          ctx.moveTo(left.x, left.y);
-          ctx.lineTo(front.x, front.y);
-          ctx.lineTo(lowF.x, lowF.y);
-          ctx.lineTo(lowL.x, lowL.y);
-          ctx.closePath();
-          ctx.fill();
-          ctx.strokeStyle = OUTLINE;
-          ctx.stroke();
         }
-        // Flat diamond top.
+
+        // Tile top diamond.
         ctx.fillStyle = colorOf(tile);
         ctx.beginPath();
-        ctx.moveTo(back.x, back.y);
-        ctx.lineTo(right.x, right.y);
-        ctx.lineTo(front.x, front.y);
-        ctx.lineTo(left.x, left.y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.strokeStyle = OUTLINE;
-        ctx.stroke();
-        // Road surface — an inset diamond in the paving colour. A pending
-        // plan (under construction) shows as a faint dashed outline instead.
-        if (tile.road || tile.roadPlan) {
-          const ccx = (back.x + right.x + front.x + left.x) * 0.25;
-          const ccy = (back.y + right.y + front.y + left.y) * 0.25;
-          const k = 0.74; // inset toward centre
+        ctx.moveTo(bx, by); ctx.lineTo(rx, ry);
+        ctx.lineTo(fx, fy); ctx.lineTo(lx, ly);
+        ctx.closePath(); ctx.fill();
+        if (doStroke) { ctx.strokeStyle = OUTLINE; ctx.stroke(); }
+
+        // Road overlay (inset diamond, skip at tiny zoom).
+        if (doRoads && (tile.road || tile.roadPlan)) {
+          // Diamond centre is (bx, by+hh); inset factor k=0.74
+          const cy_road = by + hh;
+          const k = 0.74;
           const kind = tile.road || tile.roadPlan;
           ctx.beginPath();
-          ctx.moveTo(ccx + (back.x - ccx) * k, ccy + (back.y - ccy) * k);
-          ctx.lineTo(ccx + (right.x - ccx) * k, ccy + (right.y - ccy) * k);
-          ctx.lineTo(ccx + (front.x - ccx) * k, ccy + (front.y - ccy) * k);
-          ctx.lineTo(ccx + (left.x - ccx) * k, ccy + (left.y - ccy) * k);
+          ctx.moveTo(bx,         by + hh * (1 - k));   // back  inset
+          ctx.lineTo(bx + hw*k,  cy_road);              // right inset
+          ctx.lineTo(bx,         by + hh * (1 + k));   // front inset
+          ctx.lineTo(bx - hw*k,  cy_road);              // left  inset
           ctx.closePath();
           if (tile.road) {
             ctx.fillStyle = kind === 'stone' ? '#8b9099' : '#9c7338';
@@ -207,46 +216,51 @@ export class Renderer {
             ctx.setLineDash([4, 3]);
             ctx.stroke();
             ctx.setLineDash([]);
+            ctx.lineWidth = 1;
           }
         }
       }
     }
 
-    // --- seasonal tint (demand-cycle cue) -------------------------------
+    // ── Seasonal tint ─────────────────────────────────────────────────────
     if (scene.seasonTint) {
       ctx.fillStyle = scene.seasonTint;
       ctx.fillRect(0, 0, cw, ch);
     }
 
-    // --- features, buildings, items, workers — back-to-front ------------
+    // ── Features, buildings, items, workers — back-to-front ───────────────
     const drawables = [];
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
         const tile = tiles[y][x];
         const e = tile.elevation;
-        if (tile.feature) drawables.push({ kind: 'feature', x: x + 0.5, y: y + 0.5, e, ref: tile.feature });
-        if (tile.building) drawables.push({ kind: 'building', x: x + 0.5, y: y + 0.5, e, ref: tile.building });
-        if (tile.trade) drawables.push({ kind: 'trade', x: x + 0.5, y: y + 0.5, e, ref: tile.trade });
-        if (tile.crop) drawables.push({ kind: 'crop', x: x + 0.5, y: y + 0.5, e, ref: tile.crop });
-        if (tile.item) drawables.push({ kind: 'item', x: x + 0.5, y: y + 0.5, e, ref: tile.item });
+        const dx = x + 0.5, dy = y + 0.5;
+        if (tile.feature)  drawables.push({ kind: 'feature',  x: dx, y: dy, e, ref: tile.feature });
+        if (tile.building) drawables.push({ kind: 'building', x: dx, y: dy, e, ref: tile.building });
+        if (tile.trade)    drawables.push({ kind: 'trade',    x: dx, y: dy, e, ref: tile.trade });
+        if (tile.crop)     drawables.push({ kind: 'crop',     x: dx, y: dy, e, ref: tile.crop });
+        if (tile.item)     drawables.push({ kind: 'item',     x: dx, y: dy, e, ref: tile.item });
       }
     }
     const workers = scene.workers || [];
     for (const w of workers) {
       const iy0 = Math.max(0, Math.min(rows - 1, Math.round(w.ry)));
       const ix0 = Math.max(0, Math.min(cols - 1, Math.round(w.rx)));
-      const e = tiles[iy0][ix0].elevation;
-      drawables.push({ kind: 'worker', x: w.rx + 0.5, y: w.ry + 0.5, e, ref: w });
+      drawables.push({ kind: 'worker', x: w.rx + 0.5, y: w.ry + 0.5,
+                       e: tiles[iy0][ix0].elevation, ref: w });
     }
     drawables.sort((a, b) => (a.y + a.x) - (b.y + b.x));
+
+    // Inline proj for drawables (avoids worldToScreen object allocation)
     for (const d of drawables) {
-      const p = proj(d.x, d.y, d.e);
-      if (d.kind === 'feature') this._drawFeature(ctx, p.x, p.y, ts, d.ref);
-      else if (d.kind === 'building') this._drawBuilding(ctx, p.x, p.y, ts, d.ref, scene.teams);
-      else if (d.kind === 'trade') this._drawTrade(ctx, p.x, p.y, ts, d.ref);
-      else if (d.kind === 'crop') this._drawCrop(ctx, p.x, p.y, ts, d.ref);
-      else if (d.kind === 'item') this._drawItem(ctx, p.x, p.y, ts, d.ref);
-      else this._drawWorker(ctx, p.x, p.y, ts, d.ref, scene.teams);
+      const px = (d.x - d.y) * hw + BASE_SX;
+      const py = (d.x + d.y) * hh + BASE_SY - d.e * elevPx;
+      if      (d.kind === 'feature')  this._drawFeature(ctx, px, py, ts, d.ref);
+      else if (d.kind === 'building') this._drawBuilding(ctx, px, py, ts, d.ref, scene.teams);
+      else if (d.kind === 'trade')    this._drawTrade(ctx, px, py, ts, d.ref);
+      else if (d.kind === 'crop')     this._drawCrop(ctx, px, py, ts, d.ref);
+      else if (d.kind === 'item')     this._drawItem(ctx, px, py, ts, d.ref);
+      else                            this._drawWorker(ctx, px, py, ts, d.ref, scene.teams);
     }
   }
 
@@ -403,7 +417,7 @@ export class Renderer {
     for (const g of ALL_GOODS_IDS) n += b[g] || 0;
     if (n > 0) {
       ctx.fillStyle = '#1a2830';
-      ctx.font = `bold ${Math.max(7, Math.round(ts * 0.42))}px sans-serif`;
+      ctx.font = this._badgeFont;  // cached in draw()
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(String(n), cx, cy - h * 0.45);
