@@ -184,6 +184,10 @@ export const CROP_MAX_PLANTED = 6;
 // holds this many units of that good (prevents runaway over-production).
 export const PROC_OUTPUT_CAP = 50;
 
+// --- transport vehicles ---------------------------------------------------
+// Number of wheelbarrows an auto-script team tries to maintain.
+export const CART_AUTO_COUNT = 2;
+
 // --- economy & trade (logi-sim) -------------------------------------------
 // Each team owns a treasury (currency + bulk wood/stone). Players start rich
 // in currency and wood; stone is a small bootstrap so the first facilities

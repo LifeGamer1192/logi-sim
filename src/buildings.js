@@ -13,6 +13,7 @@ export const ALL_GOODS_IDS = [
   'bronze', 'coal', 'clay', 'sand', 'glass', 'rope', 'cloth', 'leather',
   'grain', 'flour', 'tool', 'gear', 'ironOre', 'copperOre', 'tinOre',
   'wheat', 'potato', 'cotton', 'turnip', 'rice',
+  'thread', 'cottonCloth', 'canvas', 'wheelbarrow',
 ];
 
 const ALL_GOODS_SET = new Set(ALL_GOODS_IDS);
@@ -50,9 +51,14 @@ export const PROC_RECIPES = {
   alloyForge:        [{ inputs: [['copper', 1], ['tin', 1]],       output: 'bronze' }],
   ropeMaker:         [{ inputs: [['grain', 2]],                    output: 'rope' }],
   windmill:          [{ inputs: [['grain', 2]],                    output: 'flour' }],
-  weavery:           [{ inputs: [['grain', 3]],                    output: 'cloth' }],
+  weavery: [
+    { inputs: [['grain', 3]],                                      output: 'cloth' },
+    { inputs: [['thread', 2]],                                     output: 'cottonCloth' },
+    { inputs: [['cottonCloth', 2]],                                output: 'canvas' },
+  ],
   smithy:            [{ inputs: [['iron', 2], ['plank', 1]],       output: 'tool' }],
   precisionWorkshop: [{ inputs: [['bronze', 2], ['tool', 1]],      output: 'gear' }],
+  spinningMill:      [{ inputs: [['cotton', 1]],                   output: 'thread' }],
 };
 
 export const BUILDING_KINDS = [

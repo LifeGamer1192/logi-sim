@@ -35,6 +35,12 @@ export const GOODS = [
   { id: 'cotton',  sell: 10, buy: 15, nameEn: 'Cotton',  nameJa: '綿' },
   { id: 'turnip',  sell:  3, buy:  5, nameEn: 'Turnip',  nameJa: 'カブ' },
   { id: 'rice',    sell:  8, buy: 12, nameEn: 'Rice',    nameJa: '米' },
+  // Cotton derivatives
+  { id: 'thread',      sell: 14, buy: 22, nameEn: 'Thread',       nameJa: '綿糸' },
+  { id: 'cottonCloth', sell: 25, buy: 38, nameEn: 'Cotton Cloth', nameJa: '木綿' },
+  { id: 'canvas',      sell: 40, buy: 60, nameEn: 'Canvas',       nameJa: '帆布' },
+  // Vehicles / transport equipment
+  { id: 'wheelbarrow', sell: 20, buy: 30, nameEn: 'Wheelbarrow',  nameJa: '手押し車' },
 ];
 
 export const GOODS_MAP = Object.fromEntries(GOODS.map(g => [g.id, g]));

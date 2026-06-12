@@ -12,6 +12,7 @@ import { BASE_ELEV, TEAM_COLORS } from '../config.js';
 import { getLang } from '../i18n.js';
 import { ALL_GOODS_IDS } from '../buildings.js';
 import { CROP_DEFS } from '../crops.js';
+import { vehicleCargoTotal } from '../transport.js';
 import {
   worldToScreen,
   screenToWorld,
@@ -489,6 +490,40 @@ export class Renderer {
   _drawWorker(ctx, cx, cy, ts, w, teams) {
     const color = (teams && teams[w.teamId]?.color) || TEAM_COLORS[w.teamId % TEAM_COLORS.length];
     const r = Math.max(3, ts * 0.22);
+
+    // Wheelbarrow / vehicle attached to this worker
+    if (w.cart) {
+      const wr = r * 1.5;
+      // Tray body
+      ctx.fillStyle = '#c89a50';
+      ctx.strokeStyle = '#7a5820';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx - wr,       cy + r * 0.6);
+      ctx.lineTo(cx + wr,       cy + r * 0.6);
+      ctx.lineTo(cx + wr * 0.6, cy - r * 0.1);
+      ctx.lineTo(cx - wr * 0.6, cy - r * 0.1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // Wheel
+      ctx.fillStyle = '#4a3010';
+      ctx.beginPath();
+      ctx.arc(cx, cy + r * 0.6, r * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#7a5820';
+      ctx.stroke();
+      // Cargo count badge
+      const qty = vehicleCargoTotal(w.cart.cargo);
+      if (qty > 0) {
+        ctx.fillStyle = '#ffd040';
+        ctx.font = `bold ${Math.max(6, r * 0.85 | 0)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(qty), cx, cy + r * 0.25);
+      }
+    }
+
     // body
     ctx.fillStyle = color.fill;
     ctx.strokeStyle = color.dark;

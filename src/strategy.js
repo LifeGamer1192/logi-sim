@@ -26,4 +26,5 @@ export const PROC_BUILD_PREREQS = {
   weavery:           (t) => hasKind(t, 'farm'),
   smithy:            (t) => hasKind(t, 'smelter') && hasKind(t, 'sawmill'),
   precisionWorkshop: (t) => hasKind(t, 'alloyForge') && hasKind(t, 'smithy'),
+  spinningMill:      () => true,                // cotton is buyable anytime
 };

@@ -15,6 +15,7 @@ export class Worker {
     this.teamId = teamId;
     this.carrying = null; // the single floor item in hand, or null
     this.load = null;     // a trade haul { good, qty } being carried, or null
+    this.cart = null;     // attached vehicle { kind, cargo:[{good,qty}] }, or null
     this.path = null;     // remaining waypoints [{x,y}, ...]
     this.target = null;   // logical goal {x,y} this trip is for
     this.state = 'idle';  // 'idle' | 'toItem' | 'toDepot'

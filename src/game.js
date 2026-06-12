@@ -57,6 +57,7 @@ import {
 import { createBuilding, isFull, deposit, take, total, EXTRACTION_BUILDINGS, PROC_RECIPES } from './buildings.js';
 import { PROC_BUILD_PREREQS } from './strategy.js';
 import { CROP_IDS, CROP_DEFS, cropGrowthRate, cropHarvestYield, tileCropScore } from './crops.js';
+import { VEHICLE_DEFS, vehicleCargoTotal } from './transport.js';
 import { createTradePost, tickTradePost, sellUnits, buyUnits, buyPrice } from './trade.js';
 import { runScript } from './scripts.js';
 import { TRADE_LOAD, ROAD_INTERVAL, ROAD_BUILD_TIME } from './config.js';
@@ -627,11 +628,23 @@ export class Game {
     if (worker.job === 'road') { this._stepRoad(worker, team, simDt); return; }
 
     // The team's hauler (worker[2]) physically moves goods from camps to warehouses.
-    if (worker.job !== 'haul' && this._isHauler(worker, team)) {
-      const camp = this._pickCampWithStock(team);
-      const wh = this._nearestWarehouse(team, worker.x, worker.y);
-      if (camp && wh) this._startHaul(worker, team, camp);
+    // If a wheelbarrow is available, use cart-enhanced multi-good hauling.
+    if (worker.job !== 'haul' && worker.job !== 'cartHaul' && this._isHauler(worker, team)) {
+      if ((team.stock.wheelbarrow || 0) > 0) {
+        const campQueue = this._buildCampQueue(team, VEHICLE_DEFS.wheelbarrow.slots);
+        if (campQueue.length > 0) {
+          team.stock.wheelbarrow -= 1;
+          worker.cart = { kind: 'wheelbarrow', cargo: [] };
+          this._startCartHaul(worker, campQueue);
+        }
+      }
+      if (worker.job !== 'cartHaul') {
+        const camp = this._pickCampWithStock(team);
+        const wh = this._nearestWarehouse(team, worker.x, worker.y);
+        if (camp && wh) this._startHaul(worker, team, camp);
+      }
     }
+    if (worker.job === 'cartHaul') { this._stepCartHaul(worker, team, simDt); return; }
     if (worker.job === 'haul') { this._stepHaul(worker, team, simDt); return; }
 
     // farmCrop: idle non-primary worker handles crop planting/harvesting
@@ -853,6 +866,108 @@ export class Game {
     return best;
   }
 
+  // --- cart (wheelbarrow / future vehicles) hauling -------------------------
+
+  /** List of camps with stock, up to `maxSlots` entries, for a cart load. */
+  _buildCampQueue(team, maxSlots) {
+    const result = [];
+    for (const b of team.buildings) {
+      if (result.length >= maxSlots) break;
+      const spec = EXTRACTION_BUILDINGS[b.kind];
+      if (spec && (b[spec.good] || 0) > 0) result.push({ x: b.x, y: b.y, good: spec.good });
+    }
+    return result;
+  }
+
+  /** Begin a cart haul: visit each camp in `campQueue`, fill the cart, then deliver. */
+  _startCartHaul(worker, campQueue) {
+    if (worker.carrying) worker.dropCarried(this.map);
+    this._endJob(worker);
+    worker.job = 'cartHaul';
+    worker.haul = { phase: 'cartLoad', campQueue: [...campQueue] };
+    this._routeTo(worker, campQueue[0].x, campQueue[0].y);
+  }
+
+  _endCartHaul(worker, team) {
+    // Return the vehicle to team stock.
+    if (worker.cart) {
+      team.stock[worker.cart.kind] = (team.stock[worker.cart.kind] || 0) + 1;
+      worker.cart = null;
+    }
+    worker.job = null;
+    worker.haul = null;
+    worker.load = null;
+    worker.path = null;
+  }
+
+  // FSM phases:
+  //   cartLoad — travel to each camp, take 1 unit (バンニング), until cart full or no more
+  //   toWarehouse — deliver all cargo to warehouse (デバンニング)
+  _stepCartHaul(worker, team, simDt) {
+    const h = worker.haul;
+    if (!h || !worker.cart) { this._endCartHaul(worker, team); return; }
+
+    if (h.phase === 'cartLoad') {
+      if (!this._advanceWorker(worker, simDt)) return; // still traveling
+
+      const target = h.campQueue[0];
+      if (!target) {
+        // All camps visited — head to warehouse
+        if (worker.cart.cargo.length === 0) { this._endCartHaul(worker, team); return; }
+        const wh = this._nearestWarehouse(team, worker.x, worker.y);
+        if (!wh) { this._endCartHaul(worker, team); return; }
+        h.warehouseX = wh.x; h.warehouseY = wh.y; h.phase = 'toWarehouse';
+        this._routeTo(worker, wh.x, wh.y);
+        return;
+      }
+
+      // Arrived at camp — pick up one unit
+      h.campQueue.shift();
+      const camp = this._buildingAt(target.x, target.y);
+      if (camp && take(camp, target.good)) {
+        const entry = worker.cart.cargo.find(c => c.good === target.good);
+        if (entry) entry.qty++;
+        else worker.cart.cargo.push({ good: target.good, qty: 1 });
+      }
+
+      const slots = VEHICLE_DEFS[worker.cart.kind].slots;
+      const free = slots - vehicleCargoTotal(worker.cart.cargo);
+
+      if (free > 0 && h.campQueue.length > 0) {
+        this._routeTo(worker, h.campQueue[0].x, h.campQueue[0].y); // next camp
+      } else {
+        // Cart full or no more camps
+        if (worker.cart.cargo.length === 0) { this._endCartHaul(worker, team); return; }
+        const wh = this._nearestWarehouse(team, worker.x, worker.y);
+        if (!wh) { this._endCartHaul(worker, team); return; }
+        h.warehouseX = wh.x; h.warehouseY = wh.y; h.phase = 'toWarehouse';
+        this._routeTo(worker, wh.x, wh.y);
+      }
+      return;
+    }
+
+    if (h.phase === 'toWarehouse') {
+      if (!this._advanceWorker(worker, simDt)) return;
+      const wh = this._buildingAt(h.warehouseX, h.warehouseY);
+      if (wh) {
+        for (const c of worker.cart.cargo) {
+          let stored = 0;
+          for (let i = 0; i < c.qty; i++) {
+            if (deposit(wh, c.good)) { team.stock[c.good] = (team.stock[c.good] || 0) + 1; stored++; }
+            else break;
+          }
+          const overflow = c.qty - stored;
+          if (overflow > 0) team.stock[c.good] = (team.stock[c.good] || 0) + overflow;
+        }
+      } else {
+        // Warehouse gone — put all cargo directly into stock
+        for (const c of worker.cart.cargo) team.stock[c.good] = (team.stock[c.good] || 0) + c.qty;
+      }
+      worker.cart.cargo = [];
+      this._endCartHaul(worker, team);
+    }
+  }
+
   _startHaul(worker, team, camp) {
     if (worker.carrying) worker.dropCarried(this.map);
     this._endJob(worker);
@@ -942,7 +1057,7 @@ export class Game {
   // 加工 building の建築優先順位（依存関係の順）
   static PROC_BUILD_ORDER = [
     'sawmill', 'charcoalKiln', 'kiln', 'smelter', 'alloyForge',
-    'ropeMaker', 'windmill', 'weavery', 'smithy', 'precisionWorkshop',
+    'ropeMaker', 'windmill', 'weavery', 'spinningMill', 'smithy', 'precisionWorkshop',
   ];
 
   /**

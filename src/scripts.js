@@ -4,9 +4,10 @@
 //   hasty (拙速)    — 余剰品を即売り、石を補充。
 //   longterm (長期) — 相場が回復してから売る。石も安い時のみ買う。
 
-import { SCRIPT_INTERVAL } from './config.js';
+import { SCRIPT_INTERVAL, CART_AUTO_COUNT } from './config.js';
 import { sellPrice, buyPrice } from './trade.js';
 import { CROP_IDS } from './crops.js';
+import { VEHICLE_IDS } from './transport.js';
 
 export const SCRIPTS = {
   hasty:    { id: 'hasty',    label: '拙速', keepWood: 50, sellBatch: 15, minStone: 8 },
@@ -121,6 +122,21 @@ function actLongterm(team, posts, cfg) {
   }
 }
 
+// 手押し車が不足していたら交易所から購入する。
+function actBuyVehicles(team, posts) {
+  for (const kind of VEHICLE_IDS) {
+    if ((team.stock[kind] || 0) >= CART_AUTO_COUNT) continue;
+    const pi = cheapestBuyIndex(posts, kind);
+    if (pi < 0) continue;
+    const need = CART_AUTO_COUNT - (team.stock[kind] || 0);
+    const cost = buyPrice(posts[pi], kind) * need;
+    if ((team.stock.currency || 0) < cost + 300) continue; // 300通貨の余裕を残す
+    order(team, 'buy', kind, pi, need);
+    return true;
+  }
+  return false;
+}
+
 // 農作物の種（= 農作物）が不足していたら交易所から購入する。
 // 注文を 1 件キューしたら true を返す（runScript はそこで終了）。
 function actBuyCrops(team, posts) {
@@ -149,6 +165,8 @@ export function runScript(team, posts, dt) {
   const trader = team.workers[0];
   if (team.tradeQueue.length || (trader && trader.job === 'trade')) return;
   const cfg = SCRIPTS[team.scriptId] || SCRIPTS.hasty;
+  // 手押し車が不足していたら優先購入
+  if (actBuyVehicles(team, posts)) return;
   // 農作物の種が不足していたら優先購入
   if (actBuyCrops(team, posts)) return;
   if (team.scriptId === 'longterm') actLongterm(team, posts, cfg);
